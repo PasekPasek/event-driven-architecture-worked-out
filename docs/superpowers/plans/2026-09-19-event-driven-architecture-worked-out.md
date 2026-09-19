@@ -1314,59 +1314,117 @@ git add index.html
 git commit -m "feat(content): section 05 - what SSE actually is, with a live parser sandbox"
 ```
 
-### Task 12: Capture a real AI streaming fixture
+### Task 12: Build the AI streaming fixture from Anthropic's published docs example
+
+**Superseded approach:** the original version of this task called the live Anthropic Messages API
+with the user's own `ANTHROPIC_API_KEY` to capture a one-off streaming response. That needs a key and
+costs money for something that only has to be captured once. Anthropic's own public documentation
+already publishes an exact, real SSE response for a tool-use streaming request. Quoting that instead
+needs no key, no network call, no cost — and is a citation of a primary source, exactly the pattern
+§03 and §09 already use for Kafka/AWS docs, so it's more consistent with the rest of the page than a
+live capture would have been.
 
 **Files:**
+- Create: `fixtures/ai-stream-raw.txt` (real SSE bytes, quoted verbatim from Anthropic's own docs)
+- Create: `fixtures/build-fixture.mjs`
 - Create: `fixtures/ai-stream-tool-call.json`
-- Create: `fixtures/capture-ai-stream.sh` (kept in the repo so the capture is reproducible, not a one-off)
 
-- [ ] **Step 1: Write the capture script**
+- [ ] **Step 1: Write `fixtures/ai-stream-raw.txt`** — exactly this text (quoted verbatim from
+  Anthropic's "Streaming messages" documentation, "Streaming request with tool use" section, retrieved
+  2026-09-19 from `https://platform.claude.com/docs/en/build-with-claude/streaming`):
 
-```bash
-#!/usr/bin/env bash
-# Captures one real Anthropic Messages API streaming turn that uses a tool call,
-# and saves both the raw SSE bytes and a structured summary as a fixture for
-# section 06. Requires ANTHROPIC_API_KEY to be set. Costs a handful of tokens.
-set -euo pipefail
+```text
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-opus-5","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}
 
-: "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY first}"
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
-RAW_OUT="$(dirname "$0")/ai-stream-raw.txt"
+event: ping
+data: {"type": "ping"}
 
-curl -sS https://api.anthropic.com/v1/messages \
-  -H "x-api-key: $ANTHROPIC_API_KEY" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "content-type: application/json" \
-  -d '{
-    "model": "claude-sonnet-5",
-    "max_tokens": 300,
-    "stream": true,
-    "tools": [{
-      "name": "get_weather",
-      "description": "Get the current weather for a city",
-      "input_schema": {
-        "type": "object",
-        "properties": { "city": { "type": "string" } },
-        "required": ["city"]
-      }
-    }],
-    "messages": [{ "role": "user", "content": "What is the weather in Warsaw? Use the tool." }]
-  }' > "$RAW_OUT"
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Okay"}}
 
-echo "Raw SSE bytes saved to $RAW_OUT"
-echo "Now run: node fixtures/build-fixture.mjs"
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":","}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" let"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"'s"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" check"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" weather"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" for"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" San"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" Francisco"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":","}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" CA"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":":"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01T1x1fJ34qAmk2tNTrN7Up6","name":"get_weather","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\":"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" \"San"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" Francisc"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"o,"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" CA\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":89}}
+
+event: message_stop
+data: {"type":"message_stop"}
 ```
 
-```bash
-chmod +x fixtures/capture-ai-stream.sh
-```
-
-- [ ] **Step 2: Write a small build script that turns the raw capture into the page's fixture shape**
+- [ ] **Step 2: Write the build script that turns the raw text into the page's fixture shape**
 
 ```js
 // fixtures/build-fixture.mjs
-// Parses the raw SSE capture (fixtures/ai-stream-raw.txt) into the ordered list
-// of {event, data} chunks the page's section-06 stepper walks through.
+// Parses fixtures/ai-stream-raw.txt — SSE bytes quoted verbatim from Anthropic's
+// own "Streaming messages" documentation (source URL recorded in the output
+// JSON's `source` field) — into the ordered list of {event, data} chunks the
+// page's section-06 stepper walks through. No API call, no key: this is a
+// citation of a real primary source, not a live capture.
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const raw = readFileSync(new URL('./ai-stream-raw.txt', import.meta.url), 'utf8');
@@ -1391,7 +1449,9 @@ flush();
 writeFileSync(
   new URL('./ai-stream-tool-call.json', import.meta.url),
   JSON.stringify({
-    captured_at: new Date().toISOString().slice(0, 10),
+    source: 'https://platform.claude.com/docs/en/build-with-claude/streaming',
+    source_section: 'Streaming request with tool use',
+    retrieved_at: '2026-09-19',
     model: chunks.find((c) => c.event === 'message_start')?.data?.message?.model ?? 'unknown',
     chunks,
   }, null, 2),
@@ -1399,28 +1459,22 @@ writeFileSync(
 console.log(`Wrote fixtures/ai-stream-tool-call.json with ${chunks.length} chunks`);
 ```
 
-- [ ] **Step 3: Run the capture (requires the user's own `ANTHROPIC_API_KEY`)**
+- [ ] **Step 3: Run it**
 
 ```bash
-export ANTHROPIC_API_KEY=...   # the user's own key; not committed anywhere
-./fixtures/capture-ai-stream.sh
 node fixtures/build-fixture.mjs
 ```
 
-Expected: `fixtures/ai-stream-tool-call.json` now exists with a `chunks` array starting with a
-`message_start` event and ending with `message_stop`, including at least one `content_block_start`
-with `type: "tool_use"` and one or more `input_json_delta` chunks building up the tool arguments.
+Expected: `fixtures/ai-stream-tool-call.json` now exists with a `chunks` array of 27 entries, starting
+with `message_start` and ending with `message_stop`, including one `content_block_start` whose
+`content_block.type` is `"tool_use"` (at index 1) and six `input_json_delta` chunks whose
+`partial_json` fragments concatenate to `{"location": "San Francisco, CA"}`.
 
-If the model declines to call the tool (varies by prompt), adjust the user message to be more
-directive ("You must call get_weather for Warsaw") and re-run.
-
-- [ ] **Step 4: Confirm `fixtures/ai-stream-raw.txt` is excluded from history if it contains anything
-  sensitive (it shouldn't — it's just the API response body) and commit both the script and the
-  built JSON fixture; do not commit the API key**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add fixtures/capture-ai-stream.sh fixtures/build-fixture.mjs fixtures/ai-stream-tool-call.json
-git commit -m "feat: capture a real Anthropic streaming tool-call turn as a fixture"
+git add fixtures/ai-stream-raw.txt fixtures/build-fixture.mjs fixtures/ai-stream-tool-call.json
+git commit -m "feat: build the AI streaming fixture from Anthropic's published docs example"
 ```
 
 ### Task 13: Section 6 — AI model streaming as an SSE application
