@@ -458,7 +458,81 @@ ol.out li.new{color:var(--live)}
     interleave arbitrarily.</p>
   </div>
 </section>
-<section id="sse"><!-- Task 11 --></section>
+<section id="sse">
+  <div class="sec-head"><span class="sec-num">05</span><h2>What SSE actually is</h2></div>
+  <p class="lead">Server-Sent Events: one HTTP response that never ends. No upgrade handshake, no new
+  protocol — just <code>Content-Type: text/event-stream</code> on an ordinary response the server
+  keeps writing to, and a client that knows how to read it as a sequence of events instead of one
+  blob. One direction only: server to client. A client that wants to talk back makes a separate,
+  ordinary HTTP request.</p>
+  <h3>The wire format</h3>
+  <p>The body is lines of <code>field: value</code>. A blank line means "dispatch what's buffered so
+  far":</p>
+  <pre class="lit"><span class="ln">id: 42</span>
+<span class="ln">event: task.completed</span>
+<span class="ln">data: {"taskId":"write-intro","actor":"writer"}</span>
+<span class="ln"></span>
+<span class="ln">data: a plain message with no id or type — dispatched as "message"</span>
+<span class="ln"></span></pre>
+  <ul class="plain">
+    <li><code>data:</code> — the payload. Multiple <code>data:</code> lines before a blank line are
+    joined with newlines into one event.</li>
+    <li><code>event:</code> — the event type a client can filter on with
+    <code>addEventListener(type, ...)</code>; omitted, it dispatches as the generic
+    <code>"message"</code> event.</li>
+    <li><code>id:</code> — the reconnect checkpoint. The browser remembers the last one it saw and
+    resends it as a <code>Last-Event-ID</code> request header if the connection drops and it
+    reconnects.</li>
+    <li><code>retry:</code> — how many milliseconds to wait before that automatic reconnect.</li>
+  </ul>
+  <h3>Real code, not a paraphrase</h3>
+  <p>A minimal SSE server is a handful of lines. This one is quoted, unmodified, from
+  <code>4th-devs</code> (an open-source agent-orchestration course repository):</p>
+  <pre class="lit"><span class="ln">res.writeHead(200, {</span>
+<span class="ln">  'content-type': 'text/event-stream',</span>
+<span class="ln">  'cache-control': 'no-cache',</span>
+<span class="ln">  connection: 'keep-alive',</span>
+<span class="ln">})</span>
+<span class="ln">res.flushHeaders()</span>
+<span class="ln">for (const past of replay()) res.write(`data: ${JSON.stringify(past)}\n\n`)</span>
+<span class="ln">const unsubscribe = subscribe(event => res.write(`data: ${JSON.stringify(event)}\n\n`))</span></pre>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/server.ts">4th-devs, 05_01_agent_graph/src/server.ts</a> (<code>sseHandler</code>).</p>
+  <p>Notice it replays every buffered past event on every new connection, unconditionally — it never
+  reads a <code>Last-Event-ID</code> header at all. That's a legitimate, simpler design for a small
+  bounded buffer: the client re-renders from scratch and de-duplicates by id, so exact resumption
+  doesn't need to be the server's job. The client side is equally small:</p>
+  <pre class="lit"><span class="ln">const es = new EventSource("/events");</span>
+<span class="ln">es.onmessage = (e) => { const ev = JSON.parse(e.data); handleEvent(ev); };</span></pre>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/dashboard/app.js">4th-devs, 05_01_agent_graph/src/dashboard/app.js</a>.</p>
+
+  <div class="demo">
+    <h4>Sandbox — the same parser this page's <code>test-model.ts</code> runs against a real server</h4>
+    <div class="simgrid">
+      <div class="pane">
+        <h4>raw bytes over the wire</h4>
+        <textarea data-sse-input rows="6" style="width:100%;background:var(--well);color:var(--ink);border:1px solid var(--etch);border-radius:var(--r);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px">id: 1
+data: {"type":"task.started","id":"fetch-price"}
+
+id: 2
+data: {"type":"task.completed","id":"fetch-price"}
+
+</textarea>
+      </div>
+      <div class="pane">
+        <h4>what the client sees</h4>
+        <ul class="rows" data-sse-out><li class="empty">(click "send")</li></ul>
+      </div>
+    </div>
+    <div class="controls">
+      <button type="button" data-sse-send>send</button>
+      <button type="button" class="ghost" data-sse-reconnect>disconnect + reconnect (replay)</button>
+    </div>
+    <p class="hint" data-sse-hint>"send" feeds the raw bytes above through the exact
+    <code>createSseParser</code> function this page verifies against a real chunked HTTP server.
+    "disconnect + reconnect" clears the client panel and re-feeds the same buffer, the way
+    <code>4th-devs</code>'s server replays on every new connection.</p>
+  </div>
+</section>
 <section id="ai-streaming"><!-- Task 13 --></section>
 <section id="agents"><!-- Task 14 --></section>
 <section id="event-sourcing"><!-- Task 15 --></section>
@@ -533,6 +607,31 @@ function createSseParser() {
   };
 }
 /* MODEL:sse END */
+
+(() => {
+  const root = document.getElementById('sse');
+  if (!root) return;
+  const input = root.querySelector('[data-sse-input]');
+  const out = root.querySelector('[data-sse-out]');
+  let parser = createSseParser();
+  let events = [];
+
+  function renderEvents() {
+    out.innerHTML = events.length
+      ? events.map((e) => `<li><span>${e.event}</span><span class="who">id ${e.id ?? '—'}</span></li><li class="empty">${e.data}</li>`).join('')
+      : '<li class="empty">(click "send")</li>';
+  }
+
+  root.querySelector('[data-sse-send]').addEventListener('click', () => {
+    events.push(...parser.push(input.value));
+    renderEvents();
+  });
+  root.querySelector('[data-sse-reconnect]').addEventListener('click', () => {
+    parser = createSseParser();
+    events = [];
+    renderEvents();
+  });
+})();
 
 /* MODEL:scheduler START */
 // Simplified from 4th-devs (github.com/i-am-alice/4th-devs),
