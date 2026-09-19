@@ -387,7 +387,46 @@ ol.out li.new{color:var(--live)}
     </tbody>
   </table>
 </section>
-<section id="guarantees"><!-- Task 9 --></section>
+<section id="guarantees">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Delivery guarantees, for real</h2></div>
+  <p class="lead">"At-least-once" and "exactly-once" get repeated as marketing lines. Defined
+  precisely, and checked against what four real systems actually document:</p>
+  <ul class="plain">
+    <li><strong>At-most-once</strong> — delivered zero or one times; a crash between send and receipt
+    loses it silently.</li>
+    <li><strong>At-least-once</strong> — delivered one or more times; a crash between processing and
+    acknowledging causes a redelivery. The consumer must tolerate duplicates.</li>
+    <li><strong>Exactly-once</strong> — the observed <em>effect</em> happens once, even if the
+    underlying delivery is at-least-once underneath (achieved via deduplication or idempotent
+    writes, not by magically never redelivering).</li>
+  </ul>
+  <table class="spec">
+    <thead><tr><th>System</th><th class="prose">Default guarantee</th><th class="prose">Ordering</th></tr></thead>
+    <tbody>
+      <tr><td>Kafka</td><td class="prose">At-least-once. Exactly-once needs an idempotent producer
+        (<code>enable.idempotence=true</code>) and a transactional consumer
+        (<code>isolation.level=read_committed</code>).</td>
+        <td class="prose">Within one partition only (§04).</td></tr>
+      <tr><td>SQS standard</td><td class="prose">At-least-once, best-effort — duplicates and
+        reordering both possible.</td><td class="prose">None.</td></tr>
+      <tr><td>SQS FIFO</td><td class="prose">Exactly-once processing via deduplication.</td>
+        <td class="prose">Within one Message Group ID only.</td></tr>
+      <tr><td>SNS standard</td><td class="prose">At-least-once per subscriber.</td>
+        <td class="prose">None across the fanout.</td></tr>
+      <tr><td>SNS FIFO</td><td class="prose">Exactly-once, SQS FIFO subscribers only.</td>
+        <td class="prose">Within one message group.</td></tr>
+      <tr><td>EventBridge</td><td class="prose">At-least-once, automatic retry, per-rule DLQ.</td>
+        <td class="prose">None.</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Sources: <a href="https://kafka.apache.org/documentation/#semantics">Apache Kafka
+  documentation — message delivery semantics</a>; <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html">AWS SQS developer guide — FIFO queues</a>;
+  <a href="https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html">AWS SNS developer guide — FIFO
+  topics</a>; <a href="https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html">AWS EventBridge user guide</a>.</p>
+  <p class="caveat">None of these are run locally on this page — there's no browser-executable
+  "real Kafka" to diff against, the way libuv could be diffed for the event loop page. These rows are
+  quoted from the vendors' own documentation, not independently reproduced.</p>
+</section>
 <section id="ordering"><!-- Task 10 --></section>
 <section id="sse"><!-- Task 11 --></section>
 <section id="ai-streaming"><!-- Task 13 --></section>
