@@ -534,7 +534,40 @@ data: {"type":"task.completed","id":"fetch-price"}
   </div>
 </section>
 <section id="ai-streaming"><!-- Task 13 --></section>
-<section id="agents"><!-- Task 14 --></section>
+<section id="agents">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Agents as event-driven systems</h2></div>
+  <p class="lead">An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events:
+  its own tool result, another agent's completion, a human answering a question it posed. Wire
+  several agents together and the whole system is a graph of tasks reacting to each other's
+  <code>done</code> events.</p>
+  <p>A real open-source agent-orchestration course (<code>4th-devs</code>) implements this as a DAG:
+  each task lists what it <code>dependsOn</code>; every round, the scheduler recomputes the
+  <em>ready set</em> — tasks whose dependencies are all <code>done</code> — and only those run. Its
+  round loop is the agent-world analogue of the event loop's phases:</p>
+  <ol class="plain">
+    <li>Emit <code>heartbeat.started</code>.</li>
+    <li>Reconcile dependency blocks/unblocks.</li>
+    <li>Resolve waiting-on-a-human tasks.</li>
+    <li>Each agent claims one open task, runs it, the status transition is emitted as an event.</li>
+    <li>Emit <code>heartbeat.idle</code> if nothing was claimable, or mark the project done.</li>
+    <li>Emit <code>heartbeat.finished</code>; persist a snapshot of the round.</li>
+  </ol>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/03_02_events/docs/heartbeat.md">4th-devs, 03_02_events/docs/heartbeat.md</a>.</p>
+
+  <div class="demo">
+    <h4>Sandbox — the exact scheduler this page's <code>test-model.ts</code> verifies</h4>
+    <div class="mapwrap">
+      <svg class="map" viewBox="0 0 560 220" data-agent-map></svg>
+    </div>
+    <div class="controls">
+      <button type="button" data-agent-round>run next round</button>
+      <button type="button" class="ghost" data-agent-reset>reset</button>
+    </div>
+    <p class="hint" data-agent-hint>fetch-price and fetch-inventory have no dependencies and are ready
+    immediately. price-check depends on both <em>and</em> waits on its child sanity-check — watch it
+    stay un-ready even after round 1. notify depends on price-check.</p>
+  </div>
+</section>
 <section id="event-sourcing"><!-- Task 15 --></section>
 <section id="failure"><!-- Task 16 --></section>
 <section id="rules"><!-- Task 17 --></section>
@@ -747,6 +780,61 @@ function runRound(tasks, runTask) {
   });
   root.querySelector('[data-reset]').addEventListener('click', () => {
     partitions[0] = []; partitions[1] = []; combined.length = 0; render();
+  });
+  render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('agents');
+  if (!root) return;
+
+  const positions = {
+    'fetch-price': [70, 40], 'fetch-inventory': [70, 140],
+    'sanity-check': [280, 190], 'price-check': [280, 90], 'notify': [470, 90],
+  };
+  function buildTasks() {
+    return [
+      { id: 'fetch-price', status: 'todo', dependsOn: [], priority: 1 },
+      { id: 'fetch-inventory', status: 'todo', dependsOn: [], priority: 2 },
+      { id: 'sanity-check', status: 'todo', dependsOn: [], parentId: 'price-check', priority: 0 },
+      { id: 'price-check', status: 'waiting', dependsOn: ['fetch-price', 'fetch-inventory'], priority: 1 },
+      { id: 'notify', status: 'todo', dependsOn: ['price-check'], priority: 1 },
+    ];
+  }
+  let tasks = buildTasks();
+  const edges = [
+    ['fetch-price', 'price-check'], ['fetch-inventory', 'price-check'],
+    ['sanity-check', 'price-check'], ['price-check', 'notify'],
+  ];
+
+  function render() {
+    const svg = root.querySelector('[data-agent-map]');
+    const boxes = tasks.map((t) => {
+      const [x, y] = positions[t.id];
+      const cls = t.status === 'done' ? 'root' : t.status === 'in_progress' ? 'ab' : '';
+      return `<g class="ab ${cls}" transform="translate(${x},${y})">
+        <rect width="150" height="34" rx="4"/>
+        <text x="75" y="21" text-anchor="middle">${t.id} · ${t.status}</text>
+      </g>`;
+    }).join('');
+    const lines = edges.map(([from, to]) => {
+      const [x1, y1] = positions[from]; const [x2, y2] = positions[to];
+      return `<path class="e" d="M${x1 + 150},${y1 + 17} L${x2},${y2 + 17}"/>`;
+    }).join('');
+    svg.innerHTML = lines + boxes;
+  }
+
+  root.querySelector('[data-agent-round]').addEventListener('click', () => {
+    const events = runRound(tasks, () => 'completed');
+    root.querySelector('[data-agent-hint]').textContent = events.length
+      ? events.map((e) => `${e.type}:${e.id}`).join('  →  ')
+      : 'No ready tasks this round — everything is either done or still blocked/waiting.';
+    render();
+  });
+  root.querySelector('[data-agent-reset]').addEventListener('click', () => {
+    tasks = buildTasks();
+    render();
   });
   render();
 })();
