@@ -900,9 +900,10 @@ Required facts / artifacts (all must appear):
 4. Draft 4 — acknowledge-or-redeliver: a message not acknowledged within a timeout is redelivered.
    This is the shape every real broker in §03 takes, just with different names for the timeout
    (SQS: visibility timeout; Kafka: consumer group session timeout).
-5. Each draft must be shown as a small, real, runnable TypeScript snippet (illustrative, quoted —
-   not wired into `test-model.ts`; that harness verifies the *page's later models*, not this
-   narrative code).
+5. Drafts 1-3 must each be shown as a small, real TypeScript snippet (illustrative, quoted — not
+   wired into `test-model.ts`; that harness verifies the *page's later models*, not this narrative
+   code). Draft 4 introduces no new mechanism to snippet — it names the same acknowledge-or-redeliver
+   rule as it appears in three real systems — so it is prose plus the comparison table only.
 
 ```html
 <section id="build-it">
