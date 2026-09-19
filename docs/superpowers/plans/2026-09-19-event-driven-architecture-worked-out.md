@@ -966,7 +966,7 @@ Required facts / artifacts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Reload and confirm the four `pre.lit` code blocks and the comparison table render**
+- [ ] **Step 2: Reload and confirm the three `pre.lit` code blocks (Drafts 1-3) and the comparison table render**
 
 - [ ] **Step 3: Commit**
 
