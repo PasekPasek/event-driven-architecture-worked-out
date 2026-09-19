@@ -385,6 +385,65 @@ function createSseParser() {
 /* MODEL:sse END */
 
 /* MODEL:scheduler START */
+// Simplified from 4th-devs (github.com/i-am-alice/4th-devs),
+// 05_01_agent_graph/src/scheduler/{graph.ts,loop.ts}.
+function areDependenciesMet(task, tasks) {
+  return task.dependsOn.every((id) => {
+    const dep = tasks.find((t) => t.id === id);
+    return dep && dep.status === 'done';
+  });
+}
+
+function hasUnfinishedChildren(task, tasks) {
+  return tasks.some(
+    (t) => t.parentId === task.id && t.status !== 'done' && t.status !== 'blocked',
+  );
+}
+
+function findReadyTasks(tasks) {
+  const ready = [];
+  for (const task of tasks) {
+    if (task.status === 'todo' && areDependenciesMet(task, tasks)) {
+      ready.push(task);
+    } else if (
+      task.status === 'waiting'
+      && areDependenciesMet(task, tasks)
+      && !hasUnfinishedChildren(task, tasks)
+    ) {
+      task.status = 'todo';
+      ready.push(task);
+    }
+  }
+  return ready.sort((a, b) => a.priority - b.priority);
+}
+
+function unblockParents(completedTask, tasks) {
+  if (!completedTask.parentId) return;
+  const parent = tasks.find((t) => t.id === completedTask.parentId);
+  if (!parent || parent.status !== 'waiting') return;
+  if (hasUnfinishedChildren(parent, tasks)) return;
+  if (!areDependenciesMet(parent, tasks)) return;
+  parent.status = 'todo';
+}
+
+function runRound(tasks, runTask) {
+  const events = [];
+  const ready = findReadyTasks(tasks);
+  for (const task of ready) {
+    task.status = 'in_progress';
+    events.push({ type: 'task.started', id: task.id });
+    const outcome = runTask(task);
+    if (outcome === 'completed') {
+      task.status = 'done';
+      events.push({ type: 'task.completed', id: task.id });
+      unblockParents(task, tasks);
+    } else {
+      task.status = 'blocked';
+      events.push({ type: 'task.blocked', id: task.id });
+    }
+  }
+  return events;
+}
 /* MODEL:scheduler END */
 </script>
 </body>
