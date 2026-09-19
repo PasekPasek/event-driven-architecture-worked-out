@@ -329,7 +329,64 @@ ol.out li.new{color:var(--live)}
   direction only; an AI agent reacting to another agent's completion is fact 2 with the agent as both
   producer and consumer.</p>
 </section>
-<section id="build-it"><!-- Task 8 --></section>
+<section id="build-it">
+  <div class="sec-head"><span class="sec-num">02</span><h2>If you had to build it</h2></div>
+  <p class="lead">An event needs something to hold it and something to eventually call the right
+  reactions. Four drafts, each fixing the last one's problem, arrive at the shape every real broker
+  takes.</p>
+
+  <h3>Draft 1 — in-process, and gone the moment it's handled</h3>
+  <pre class="lit"><span class="ln">import { EventEmitter } from "node:events";</span>
+<span class="ln"></span>
+<span class="ln">const bus = new EventEmitter();</span>
+<span class="ln">bus.on("price.changed", (e: { productId: string; price: number }) => {</span>
+<span class="ln">  console.log(`repricing ${e.productId} at ${e.price}`);</span>
+<span class="ln">});</span>
+<span class="ln">bus.emit("price.changed", { productId: "sku-1", price: 1999 });</span></pre>
+  <p>Synchronous, at-most-once, and the event never existed outside process memory: crash between
+  <code>emit</code> and the listener finishing, and it's simply gone. Fine for coordinating within one
+  process; not durable enough for anything that must survive a restart.</p>
+
+  <h3>Draft 2 — durable, but dispatched once</h3>
+  <pre class="lit"><span class="ln">import { appendFileSync } from "node:fs";</span>
+<span class="ln"></span>
+<span class="ln">function publish(event: unknown): void {</span>
+<span class="ln">  appendFileSync("events.log", JSON.stringify(event) + "\n"); // durable</span>
+<span class="ln">  bus.emit("price.changed", event); // still only reaches whoever is listening *now*</span>
+<span class="ln">}</span></pre>
+  <p>The fact survives a crash in the log. But dispatch is still a one-shot, in-memory broadcast: a
+  consumer that starts five minutes later, or was down when it happened, never sees it. Durability of
+  the fact and delivery to a consumer are two different problems.</p>
+
+  <h3>Draft 3 — a reader tracks its own position</h3>
+  <pre class="lit"><span class="ln">let offset = 0;</span>
+<span class="ln"></span>
+<span class="ln">function poll(): unknown[] {</span>
+<span class="ln">  const lines = readFileSync("events.log", "utf8").trim().split("\n");</span>
+<span class="ln">  const fresh = lines.slice(offset).map((l) => JSON.parse(l));</span>
+<span class="ln">  offset = lines.length; // remembered *after* processing, not before</span>
+<span class="ln">  return fresh;</span>
+<span class="ln">}</span></pre>
+  <p>Now a consumer that restarts can resume from its own <code>offset</code> instead of the
+  producer's broadcast moment. But note the comment: if the process crashes after reading a line and
+  before persisting the new <code>offset</code>, that event is redelivered on restart. That's not a
+  bug to fix — it's the origin of "at-least-once."</p>
+
+  <h3>Draft 4 — acknowledge or redeliver</h3>
+  <p>Give every delivered-but-unacknowledged event a deadline. If it isn't acknowledged before the
+  deadline, hand it out again. That single rule is a broker's visibility timeout (SQS), its consumer
+  group session timeout (Kafka), and its ack-wait (NATS JetStream) — three names for the same fix to
+  the same problem Draft 3 exposed.</p>
+  <table class="spec">
+    <thead><tr><th>Draft</th><th class="prose">What it fixes</th><th class="prose">What it still can't do</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td class="prose">Reacting to something, at all</td><td class="prose">Survive a crash</td></tr>
+      <tr><td>2</td><td class="prose">Surviving a crash (the fact is on disk)</td><td class="prose">Deliver to a consumer that wasn't listening yet</td></tr>
+      <tr><td>3</td><td class="prose">Resuming after a restart</td><td class="prose">Tell the difference between "processed" and "crashed mid-process"</td></tr>
+      <tr><td>4</td><td class="prose">Redelivering what wasn't acknowledged</td><td class="prose">Guarantee a redelivery isn't processed twice (§09: idempotency)</td></tr>
+    </tbody>
+  </table>
+</section>
 <section id="guarantees"><!-- Task 9 --></section>
 <section id="ordering"><!-- Task 10 --></section>
 <section id="sse"><!-- Task 11 --></section>
