@@ -337,6 +337,51 @@ function computeRetryDelayMs(attempt) {
 /* MODEL:backoff END */
 
 /* MODEL:sse START */
+function createSseParser() {
+  let carry = '';
+  let dataBuf = '';
+  let eventType = '';
+  let lastEventId = '';
+
+  function processLine(line, out) {
+    if (line === '') {
+      if (dataBuf !== '') {
+        out.push({
+          id: lastEventId || null,
+          event: eventType || 'message',
+          data: dataBuf.endsWith('\n') ? dataBuf.slice(0, -1) : dataBuf,
+        });
+      }
+      dataBuf = '';
+      eventType = '';
+      return;
+    }
+    if (line[0] === ':') return; // comment line, e.g. a keep-alive ping
+    const colon = line.indexOf(':');
+    const field = colon === -1 ? line : line.slice(0, colon);
+    let value = colon === -1 ? '' : line.slice(colon + 1);
+    if (value[0] === ' ') value = value.slice(1);
+    if (field === 'data') dataBuf += value + '\n';
+    else if (field === 'event') eventType = value;
+    else if (field === 'id' && !value.includes('\u0000')) lastEventId = value;
+    // 'retry' is parsed by real browsers to set the reconnection time; this
+    // model doesn't drive a real reconnect timer, so it's read and ignored.
+  }
+
+  return {
+    push(chunk) {
+      carry += chunk;
+      const lines = carry.split(/\r\n|\r|\n/);
+      carry = lines.pop();
+      const out = [];
+      for (const line of lines) processLine(line, out);
+      return out;
+    },
+    get lastEventId() {
+      return lastEventId;
+    },
+  };
+}
 /* MODEL:sse END */
 
 /* MODEL:scheduler START */
