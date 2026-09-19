@@ -325,6 +325,15 @@ ol.out li.new{color:var(--live)}
 </div>
 <script>
 /* MODEL:backoff START */
+// Ported from 4th-devs (github.com/i-am-alice/4th-devs),
+// 05_01_agent_graph/src/scheduler/recovery.ts, computeRetryDelayMs.
+const BACKOFF_BASE_MS = 1500;
+const BACKOFF_MAX_MS = 15000;
+const MAX_AUTO_RETRY_ATTEMPTS = 3;
+
+function computeRetryDelayMs(attempt) {
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** Math.max(0, attempt - 1)));
+}
 /* MODEL:backoff END */
 
 /* MODEL:sse START */
