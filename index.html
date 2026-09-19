@@ -617,9 +617,27 @@ function createSseParser() {
   let events = [];
 
   function renderEvents() {
-    out.innerHTML = events.length
-      ? events.map((e) => `<li><span>${e.event}</span><span class="who">id ${e.id ?? '—'}</span></li><li class="empty">${e.data}</li>`).join('')
-      : '<li class="empty">(click "send")</li>';
+    out.innerHTML = '';
+    if (events.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'empty';
+      empty.textContent = '(click "send")';
+      out.appendChild(empty);
+      return;
+    }
+    for (const e of events) {
+      const head = document.createElement('li');
+      const type = document.createElement('span');
+      type.textContent = e.event;
+      const id = document.createElement('span');
+      id.className = 'who';
+      id.textContent = `id ${e.id ?? '—'}`;
+      head.append(type, id);
+      const data = document.createElement('li');
+      data.className = 'empty';
+      data.textContent = e.data;
+      out.append(head, data);
+    }
   }
 
   root.querySelector('[data-sse-send]').addEventListener('click', () => {
