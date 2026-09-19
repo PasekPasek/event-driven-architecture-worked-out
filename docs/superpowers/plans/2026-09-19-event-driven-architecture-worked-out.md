@@ -1250,6 +1250,7 @@ data: {"type":"task.started","id":"fetch-price"}
 
 id: 2
 data: {"type":"task.completed","id":"fetch-price"}
+
 </textarea>
       </div>
       <div class="pane">
