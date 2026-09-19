@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Event-Driven Architecture, Worked Out — Queues, SSE and AI Agents in TypeScript</title>
+<meta name="description" content="An interactive walkthrough of event-driven architecture: what a broker actually guarantees (Kafka, SQS, SNS, EventBridge), what Server-Sent Events really is, how AI model streaming and multi-agent orchestration are both applications of the same mechanism. Built from real broker docs, real captured AI streams, and real agent-scheduler code, in TypeScript.">
+<meta name="author" content="Pawe&#322; Pasek">
+<link rel="canonical" href="https://pasekpasek.github.io/event-driven-architecture-worked-out/">
+
+<meta property="og:type" content="article">
+<meta property="og:title" content="Event-Driven Architecture, Worked Out">
+<meta property="og:description" content="Queues, Server-Sent Events, and AI agents, derived from the same three facts. Every claim either verified by running real code or cited from a primary source.">
+<meta property="og:url" content="https://pasekpasek.github.io/event-driven-architecture-worked-out/">
+<meta property="og:image" content="https://pasekpasek.github.io/event-driven-architecture-worked-out/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A dependency graph of tasks reacting to events, with the ready set highlighted.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Event-Driven Architecture, Worked Out">
+<meta name="twitter:description" content="Queues, Server-Sent Events, and AI agents, derived from the same three facts. Every claim either verified by running real code or cited from a primary source.">
+<meta name="twitter:image" content="https://pasekpasek.github.io/event-driven-architecture-worked-out/og.png">
+<meta name="theme-color" content="#1A2028">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Event-Driven Architecture, Worked Out",
+  "description": "An interactive walkthrough of event-driven architecture: broker delivery guarantees, ordering and partitioning, Server-Sent Events, AI model streaming, and multi-agent orchestration as event-sourced systems.",
+  "author": { "@type": "Person", "name": "Paweł Pasek", "url": "https://github.com/PasekPasek" },
+  "inLanguage": "en",
+  "keywords": "event-driven architecture, TypeScript, Kafka, SQS, SNS, EventBridge, NATS, Server-Sent Events, SSE, AI agents, event sourcing, message queue",
+  "about": { "@type": "Thing", "name": "Event-driven architecture" }
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  /* plate & wells */
+  --plate:#1A2028; --well:#141A21; --riser:#222B35; --sunk:#1D242C;
+  --etch:#2C3743; --etch-lit:#3D4B5A;
+  /* ink */
+  --ink:#DDE3E9; --ink-dim:#8C99A6;
+  /* instrumentation: warm = energised, cold = stored */
+  --live:#C79BDF; --stored:#7FA7C4; --warn:#C98A44;
+  --idle-line:#3A4552; --idle-ink:#93A0AD; --fail:#C4705E;
+  /* syntax */
+  --c-key:#C79BDF; --c-str:#83C79A; --c-com:#8C99A6; --c-fn:#8FB8E8; --c-typ:#DFAF72;
+  --r:2px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--plate);color:var(--ink);
+  font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  font-size:17px;line-height:1.68;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:780px;margin:0 auto;padding:0 20px 96px}
+a{color:var(--live);text-decoration:none;border-bottom:1px solid rgba(240,169,76,.35)}
+a:hover{border-bottom-color:var(--live)}
+
+h1{font-size:clamp(34px,7vw,54px);line-height:1.02;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 20px;max-width:15ch}
+h2{font-size:clamp(22px,4.4vw,28px);line-height:1.2;font-weight:600;
+   letter-spacing:-.01em;margin:0}
+h3{font-size:18px;font-weight:600;margin:32px 0 8px}
+h4{font-family:"IBM Plex Mono",ui-monospace,monospace;
+   font-size:11px;font-weight:500;letter-spacing:.06em;
+   margin:0 0 10px;color:var(--ink-dim)}
+p{margin:0 0 16px;max-width:66ch}
+.lead{font-size:19.5px;line-height:1.6}
+.muted{color:var(--ink-dim)}
+code,pre,.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+p code,li code,td code,small code{font-size:.86em;background:var(--riser);color:var(--ink);
+  padding:1px 5px;border-radius:var(--r);border:1px solid var(--etch)}
+strong{font-weight:600;color:#F1F5F8}
+em{font-style:italic}
+
+header{padding:78px 0 6px}
+.kicker{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.02em;
+  color:var(--ink-dim);margin:0 0 22px}
+
+/* ---- datum rules between sections ---- */
+section{padding-top:56px;border-top:1px solid var(--etch);margin-top:56px}
+.sec-head{display:flex;gap:16px;align-items:baseline;margin-bottom:24px}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--live);
+  padding-top:5px;flex:none;letter-spacing:.04em;opacity:.8}
+ul.plain,ol.plain{margin:0 0 16px;padding-left:22px;max-width:66ch}
+ul.plain li,ol.plain li{margin-bottom:9px}
+
+pre{background:var(--riser);border:1px solid var(--etch);
+    border-left:2px solid var(--etch-lit);
+    border-radius:var(--r);padding:16px 18px;overflow-x:auto;font-size:13.5px;
+    line-height:1.7;margin:20px 0;color:var(--ink)}
+.c-key{color:var(--c-key)}.c-str{color:var(--c-str)}
+.c-com{color:var(--c-com);font-style:italic}
+.c-fn{color:var(--c-fn)}.c-typ{color:var(--c-typ)}
+.src{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-dim);margin:-12px 0 20px}
+
+/* ---- instruments: recessed wells machined into the plate ---- */
+.demo{position:relative;background:var(--well);
+  border:1px solid var(--etch);border-radius:var(--r);
+  padding:20px;margin:26px 0;
+  box-shadow:inset 0 1px 0 rgba(0,0,0,.5), inset 0 0 40px rgba(0,0,0,.35);
+  background-image:linear-gradient(rgba(148,178,208,.045) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(148,178,208,.045) 1px,transparent 1px);
+  background-size:32px 32px;
+  background-position:-1px -1px}
+.demo::before,.demo::after{content:"";position:absolute;width:11px;height:11px;
+  border-color:var(--etch-lit);border-style:solid}
+.demo::before{top:-1px;left:-1px;border-width:1px 0 0 1px}
+.demo::after{bottom:-1px;right:-1px;border-width:0 1px 1px 0}
+.pane{background:#191F26;border:1px solid var(--etch);
+  border-radius:var(--r);padding:13px;min-width:0;
+  box-shadow:inset 0 1px 0 rgba(0,0,0,.4);
+  transition:border-color .25s ease,box-shadow .25s ease}
+.pane.hot{border-color:rgba(240,169,76,.6);
+  box-shadow:inset 0 1px 0 rgba(0,0,0,.4), 0 0 16px -6px rgba(240,169,76,.45)}
+
+.rows{list-style:none;margin:0;padding:0;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.rows li{padding:5px 8px;background:var(--riser);border:1px solid var(--etch);
+  border-radius:var(--r);margin-bottom:5px;
+  display:flex;justify-content:space-between;gap:8px;align-items:baseline;
+  overflow-wrap:anywhere}
+.rows li.inv{border-left:2px solid var(--stored);color:#CBDCE8}
+.rows li.fx{border-left:2px solid var(--live);color:#F0E2CE}
+.rows li.pend{border-left:2px solid var(--warn)}
+.rows li .who{color:var(--ink-dim);font-size:10.5px;flex:none}
+.empty{font-size:11.5px;color:var(--idle-ink);opacity:.6;
+  font-family:"IBM Plex Mono",monospace;padding:4px 2px}
+
+/* ---- machined controls ---- */
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;align-items:center}
+button{font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-weight:500;
+  letter-spacing:.01em;
+  background:linear-gradient(var(--riser),#1C242C);
+  color:var(--ink);border:1px solid var(--etch-lit);
+  padding:9px 14px;border-radius:var(--r);cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  transition:border-color .16s ease,color .16s ease,background .16s ease}
+button:hover:not(:disabled){border-color:var(--live);color:var(--live)}
+button.ghost{background:transparent;color:var(--ink-dim);border-color:var(--etch)}
+button.ghost:hover:not(:disabled){color:var(--live);border-color:var(--etch-lit)}
+button.mini{font-size:11.5px;padding:6px 11px}
+button:disabled{opacity:.3;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+.hint{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink-dim);
+  margin:14px 0 0;min-height:2.4em;max-width:none;line-height:1.6}
+
+.ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink-dim)}
+.ctl input[type=range]{flex:1;min-width:160px;accent-color:var(--live);background:transparent}
+.ctl output{color:var(--live);min-width:66px}
+.ctlnote{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--idle-ink);
+  margin:8px 0 0;max-width:66ch;line-height:1.6}
+
+.verdict{margin-top:16px;padding:12px 14px;border-radius:var(--r);
+  background:#20261F;border:1px solid rgba(240,169,76,.5);color:var(--live);
+  font-family:"IBM Plex Mono",monospace;font-size:13px}
+
+.toc{font-family:"IBM Plex Mono",monospace;font-size:13px;line-height:2.1;
+  margin:36px 0 0;padding:0;list-style:none}
+.toc a{color:var(--ink);border-bottom:1px solid var(--etch)}
+.toc a:hover{color:var(--live);border-color:var(--live)}
+
+footer{border-top:1px solid var(--etch);margin-top:60px;padding-top:30px;
+  font-size:14px;color:var(--ink-dim)}
+
+@media (pointer:coarse){
+  button{min-height:44px;padding-top:11px;padding-bottom:11px}
+  button.mini{min-height:40px}
+}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+
+table.spec{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0 8px}
+table.spec th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:11px;
+  letter-spacing:.05em;color:var(--ink-dim);font-weight:500;
+  border-bottom:1px solid var(--etch-lit);padding:0 12px 8px 0}
+table.spec td{padding:9px 12px 9px 0;border-bottom:1px solid var(--etch);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;vertical-align:top}
+table.spec td:first-child{color:var(--live);white-space:nowrap}
+table.spec td.prose{font-family:"IBM Plex Serif",Georgia,serif;font-size:14.5px;color:var(--ink)}
+table.spec td.num{color:var(--ink)}
+.tablewrap{overflow-x:auto}
+
+.caveat{border-left:2px solid var(--warn);padding:2px 0 2px 14px;margin:20px 0;
+  color:var(--ink-dim);font-size:15px;max-width:66ch}
+
+/* ---- the three truths ---- */
+.truths{list-style:none;counter-reset:t;margin:22px 0;padding:0;max-width:66ch}
+.truths li{counter-increment:t;position:relative;padding:14px 16px 14px 52px;margin-bottom:10px;
+  background:var(--sunk);border:1px solid var(--etch);border-left:2px solid var(--stored);border-radius:var(--r)}
+.truths li::before{content:counter(t,decimal-leading-zero);position:absolute;left:16px;top:15px;
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--stored)}
+.truths li p{margin:6px 0 0;color:var(--ink-dim);font-size:15.5px}
+
+/* ---- the dependency map ---- */
+.mapwrap{overflow-x:auto}
+.map{display:block;width:100%;min-width:560px;height:auto}
+.map text{font-family:"IBM Plex Mono",monospace;font-size:10.5px;fill:var(--idle-ink)}
+.map .ab rect{fill:#241F17;stroke:var(--live);stroke-width:1.3}
+.map .ab text{fill:var(--live)}
+.map .ab{cursor:pointer}
+.map .ab:hover rect{fill:#2E2519}
+.map .ab.root rect{fill:var(--sunk);stroke:var(--stored);stroke-width:1.2}
+.map .ab.root text{fill:#CBDCE8}
+.map .ab.root:hover rect{fill:#1B2229}
+.map .ab:focus{outline:none}
+.map .ab:focus rect{stroke-width:2.5}
+.map .goal rect{fill:var(--riser);stroke:var(--etch-lit);stroke-dasharray:4 3}
+.map .goal text{fill:var(--ink)}
+.map .e{stroke:var(--idle-line);stroke-width:1.2;fill:none;marker-end:url(#m-arr)}
+.mapkey{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-dim)}
+.mapkey span{display:flex;align-items:center;gap:7px}
+.mapkey i{width:11px;height:11px;border-radius:2px;display:inline-block}
+.mapkey i.root{background:var(--sunk);border:1.5px solid var(--stored)}
+.mapkey i.on{background:#241F17;border:1.5px solid var(--live)}
+
+/* ---- timelines ---- */
+.tlwrap{overflow-x:auto;margin-top:6px}
+.tlwrap,.mapwrap,.tablewrap,pre{scrollbar-color:var(--etch-lit) transparent}
+.tl{display:block;width:100%;min-width:520px;height:auto}
+.tl text{font-family:"IBM Plex Mono",monospace;font-size:10.5px;fill:var(--ink-dim)}
+.tl .axis{stroke:var(--etch-lit);stroke-width:1}
+.tl .grid{stroke:var(--etch);stroke-width:1}
+.tl .busy{fill:rgba(240,169,76,.18);stroke:var(--live);stroke-width:1}
+.tl .want{stroke:var(--stored);stroke-width:1.5;stroke-dasharray:3 3}
+.tl .ran{fill:var(--live)}
+.tl .job{fill:#241F17;stroke:var(--live);stroke-width:1}
+.tl .job.wait{fill:none;stroke:var(--etch-lit);stroke-dasharray:3 3}
+.tl .cb{stroke:var(--stored);stroke-width:2}
+.tl .lbl{fill:var(--ink)}
+
+/* ---- source listings that light up ---- */
+pre.lit{padding:12px 0}
+pre.lit .ln{display:block;padding:0 16px;min-height:1.7em;border-left:2px solid transparent;white-space:pre}
+pre.lit .ln.on{background:#2B2114;border-left-color:var(--live);color:#F6E6CF}
+pre.lit .ln.bad{background:#27201A;border-left-color:var(--warn)}
+
+/* ---- simulators ---- */
+.simgrid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:14px;margin-top:14px}
+@media (max-width:680px){.simgrid{grid-template-columns:1fr}}
+.simgrid pre{margin:0;font-size:12px;line-height:1.65;background:var(--well)}
+/* long lines wrap with a hanging indent instead of hiding behind a scrollbar */
+.simgrid pre.lit .ln{white-space:pre-wrap;overflow-wrap:anywhere;padding-left:calc(12px + 4ch);text-indent:-4ch;padding-right:10px}
+.qgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+@media (max-width:680px){.qgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.qgrid .pane{padding:10px}
+.qgrid .pane h4{margin-bottom:7px;font-size:10.5px}
+.qgrid .wide{grid-column:1/-1}
+ol.out{margin:0;padding:0 0 0 26px;font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink);columns:2 180px;column-gap:28px}
+ol.out li{padding:1px 0;break-inside:avoid}
+ol.out li::marker{color:var(--idle-ink);font-size:10.5px}
+ol.out li.new{color:var(--live)}
+.lp{display:block;width:100%;max-width:260px;height:auto;margin:0 auto}
+.lp text{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--idle-ink);transition:fill .25s ease}
+.lp rect{fill:var(--sunk);stroke:var(--etch-lit);stroke-width:1;transition:fill .25s ease,stroke .25s ease}
+.lp .hot rect{fill:#2B2114;stroke:var(--live);stroke-width:1.8}
+.lp .hot text{fill:var(--live)}
+.lp .ed{stroke:var(--idle-line);stroke-width:1.1;fill:none;marker-end:url(#m-arr)}
+.lp .ex rect{stroke-dasharray:3 3}
+.lane{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--idle-ink);margin:8px 0 0;max-width:none;
+  border:1px dashed var(--etch-lit);border-radius:var(--r);padding:5px 8px;text-align:center;transition:all .25s ease}
+.lane.hot{color:var(--live);border:1px solid var(--live);background:#241F17}
+.clock{font-size:11.5px;color:var(--ink-dim);margin:8px 0 0;text-align:center;max-width:none}
+.count{font-size:11.5px;color:var(--idle-ink);margin-left:auto}
+.fname{display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="m-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3A4552"/></marker>
+  </defs>
+</svg>
+<div class="wrap">
+
+<header>
+  <p class="kicker">event-driven architecture — worked out</p>
+  <h1>How events actually flow, from a queue to an AI agent</h1>
+  <p class="lead">A producer publishes a fact. Something, eventually, reacts to it. Everything else —
+  brokers, Server-Sent Events, streaming model output, multi-agent orchestration — is a variation on
+  that one relationship. This page derives event-driven architecture from three things that are
+  always true, then shows the same three things underneath a Kafka topic, an <code>EventSource</code>
+  connection, and a graph of AI agents reacting to each other's output.</p>
+  <ol class="toc">
+    <li><a href="#truths">01 — Three things always true</a></li>
+    <li><a href="#build-it">02 — If you had to build it</a></li>
+    <li><a href="#guarantees">03 — Delivery guarantees, for real</a></li>
+    <li><a href="#ordering">04 — Ordering and partitioning</a></li>
+    <li><a href="#sse">05 — What SSE actually is</a></li>
+    <li><a href="#ai-streaming">06 — AI model streaming as an SSE application</a></li>
+    <li><a href="#agents">07 — Agents as event-driven systems</a></li>
+    <li><a href="#event-sourcing">08 — Event sourcing and agent state</a></li>
+    <li><a href="#failure">09 — Failure, retries, poison messages</a></li>
+    <li><a href="#rules">10 — The whole page in rules, and scope</a></li>
+  </ol>
+</header>
+
+<section id="truths"><!-- Task 7 --></section>
+<section id="build-it"><!-- Task 8 --></section>
+<section id="guarantees"><!-- Task 9 --></section>
+<section id="ordering"><!-- Task 10 --></section>
+<section id="sse"><!-- Task 11 --></section>
+<section id="ai-streaming"><!-- Task 13 --></section>
+<section id="agents"><!-- Task 14 --></section>
+<section id="event-sourcing"><!-- Task 15 --></section>
+<section id="failure"><!-- Task 16 --></section>
+<section id="rules"><!-- Task 17 --></section>
+
+<footer>
+  <p>Built by <a href="https://github.com/PasekPasek">Paweł Pasek</a>. Companion to
+  <a href="https://github.com/PasekPasek/event-loop-worked-out">event-loop-worked-out</a> and
+  <a href="https://github.com/PasekPasek/auth-worked-out">auth-worked-out</a>, which use the same
+  workshop-plate design.</p>
+</footer>
+
+</div>
+<script>
+/* MODEL:backoff START */
+/* MODEL:backoff END */
+
+/* MODEL:sse START */
+/* MODEL:sse END */
+
+/* MODEL:scheduler START */
+/* MODEL:scheduler END */
+</script>
+</body>
+</html>
