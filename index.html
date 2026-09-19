@@ -304,7 +304,31 @@ ol.out li.new{color:var(--live)}
   </ol>
 </header>
 
-<section id="truths"><!-- Task 7 --></section>
+<section id="truths">
+  <div class="sec-head"><span class="sec-num">01</span><h2>Three things always true</h2></div>
+  <p class="lead">Most explanations of event-driven architecture open with a diagram: boxes for
+  services, arrows for messages, a cylinder for a queue. The diagram is a consequence. Start one
+  level lower, with what makes something "event-driven" rather than just "asynchronous."</p>
+  <ol class="truths">
+    <li>A producer does not know who, if anyone, consumes an event it publishes. There is no return
+      value and no caller identity — publishing is not the same operation as calling.
+      <p>Contrast a function call, where the caller knows exactly what it invoked and gets a value
+      back. An event has none of that: zero, one, or a hundred consumers may react, and the producer's
+      code is identical in every case.</p></li>
+    <li>An event describes a fact that has already happened — <code>price.changed</code>, not
+      <code>change the price</code>. A consumer that fails to process it does not un-happen it.
+      <p>This is why retrying a failed consumer is safe in a way retrying a failed RPC often isn't:
+      the fact is still true, and processing it again should converge to the same result (see
+      idempotency in §09).</p></li>
+    <li>Coupling doesn't disappear, it moves: from "who do I call" (a function reference, a service
+      URL) to "what shape do I emit, what shape do I expect to read." A schema change is now the
+      thing that breaks consumers, not a moved endpoint.</li>
+  </ol>
+  <p>Everything below is one of these three facts wearing a costume: a Kafka partition is fact 1 with
+  a specific answer to "how many consumers, in what order"; an SSE connection is fact 1 pointed in one
+  direction only; an AI agent reacting to another agent's completion is fact 2 with the agent as both
+  producer and consumer.</p>
+</section>
 <section id="build-it"><!-- Task 8 --></section>
 <section id="guarantees"><!-- Task 9 --></section>
 <section id="ordering"><!-- Task 10 --></section>
