@@ -7,7 +7,7 @@ Three claims on this page are backed by running code, checked by `test-model.ts`
 - **The DAG scheduler** (ready-set computation, parent-unblocking) is checked against an
   independently-written oracle port of the real algorithm in `4th-devs`
   (`05_01_agent_graph/src/scheduler/graph.ts` and `loop.ts`) — two separate implementations of the
-  same real logic, not one copied into the other.
+  same real logic, not one copy-pasted into the other.
 - **The backoff formula** is checked against the literal formula in `4th-devs`
   (`05_01_agent_graph/src/scheduler/recovery.ts`, `computeRetryDelayMs`).
 
