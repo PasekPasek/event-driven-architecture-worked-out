@@ -467,11 +467,15 @@ function createSseParser() {
 This starts a real `node:http` server that speaks `text/event-stream` — deliberately splitting one
 event across two separate `res.write` calls (a chunk boundary mid-field) to prove the parser handles
 a field split across network packets, which is the actual reason a naive `split('\n\n')` on the
-whole response body would be wrong. It also proves reconnection: the client disconnects after the
-first two events, reconnects with a `Last-Event-ID` header, and the server (mirroring the real,
-pragmatic choice made in `4th-devs/05_01_agent_graph/src/server.ts`, which always replays its whole
-bounded buffer on connect rather than resuming from `Last-Event-ID`) resends everything — so the
-check asserts the client's parser correctly de-duplicates by `id` when replaying.
+whole response body would be wrong, and that the parser tracks a running `lastEventId` as it goes.
+
+This check does *not* exercise an actual disconnect/reconnect/`Last-Event-ID` round trip — that
+scenario (4th-devs' real server always replays its whole bounded buffer on any new connection,
+rather than resuming from a `Last-Event-ID` request header) is covered narratively and interactively
+in §05's live page sandbox (Task 11's "disconnect + reconnect" button), not as an automated
+regression check here. Don't describe this specific check as proving reconnection or deduplication
+when writing or reviewing it — it only proves chunk-boundary parsing and id tracking within one
+connection.
 
 ```ts
 // ── sse ──────────────────────────────────────────────────────────────────
