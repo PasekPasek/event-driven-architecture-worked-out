@@ -611,7 +611,39 @@ data: {"type":"task.completed","id":"fetch-price"}
     stay un-ready even after round 1. notify depends on price-check.</p>
   </div>
 </section>
-<section id="event-sourcing"><!-- Task 15 --></section>
+<section id="event-sourcing">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Event sourcing and agent state</h2></div>
+  <p class="lead">Nothing so far has stored "the current state" anywhere. It's derived: replay the
+  event log from empty, and you have it. That's not an implementation detail — it's a deliberate
+  trade of storage simplicity for compute-on-read.</p>
+  <p><code>4th-devs</code> writes exactly this: an append-only <code>events.jsonl</code>, one JSON
+  object per line, that's never edited, only appended to:</p>
+  <pre class="lit"><span class="ln">{"type":"task.completed","round":3,"at":"2026-02-16T12:00:00.000Z",</span>
+<span class="ln"> "agent":"writer","taskId":"write-events-section",</span>
+<span class="ln"> "data":{"turns":2,"estimated_tokens":1800,"actual_tokens":1690}}</span></pre>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/03_02_events/docs/schemas.md">4th-devs, 03_02_events/docs/schemas.md</a>.</p>
+  <p>Two things fall out for free. Crash recovery: restart, replay the log, and the in-memory state is
+  exactly what it was — there is no separate "did the state file get corrupted" failure mode, because
+  there never was a state file, only the log. Observability: any question about "what happened, and
+  when" is answerable by reading the log, not by having remembered to instrument that specific
+  question in advance.</p>
+  <p class="caveat">It doesn't stay free. A log that only ever grows eventually costs more to replay
+  than a snapshot would cost to load — which is exactly why Kafka ships log compaction (keeping only
+  the latest record per key) as a first-class feature, not an afterthought. Snapshotting is named
+  here, not built: out of scope for this page (§10).</p>
+
+  <div class="demo">
+    <h4>Sandbox — state as a fold over the log</h4>
+    <div class="ctl">
+      <input type="range" min="0" max="6" value="0" data-log-scrub>
+      <output data-log-count>0 / 6 events applied</output>
+    </div>
+    <div class="qgrid">
+      <div class="pane wide"><h4>event log</h4><ol class="rows" data-log-events></ol></div>
+      <div class="pane wide"><h4>state at this point (folded)</h4><pre data-log-state style="margin:0"></pre></div>
+    </div>
+  </div>
+</section>
 <section id="failure"><!-- Task 16 --></section>
 <section id="rules"><!-- Task 17 --></section>
 
@@ -927,6 +959,58 @@ function runRound(tasks, runTask) {
   root.querySelector('[data-ai-reset]').addEventListener('click', () => {
     i = 0; text = ''; toolJson = ''; render();
   });
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('event-sourcing');
+  if (!root) return;
+  const log = [
+    { type: 'task.created', taskId: 'fetch-price' },
+    { type: 'task.created', taskId: 'notify' },
+    { type: 'task.started', taskId: 'fetch-price', agent: 'researcher' },
+    { type: 'task.completed', taskId: 'fetch-price', agent: 'researcher' },
+    { type: 'task.started', taskId: 'notify', agent: 'writer' },
+    { type: 'task.blocked', taskId: 'notify', reason: 'missing recipient' },
+    { type: 'task.completed', taskId: 'notify', agent: 'writer' },
+  ];
+  const scrub = root.querySelector('[data-log-scrub]');
+  scrub.max = String(log.length);
+  const countEl = root.querySelector('[data-log-count]');
+  const eventsEl = root.querySelector('[data-log-events]');
+  const stateEl = root.querySelector('[data-log-state]');
+
+  eventsEl.innerHTML = '';
+  for (const [i, e] of log.entries()) {
+    const li = document.createElement('li');
+    li.dataset.idx = String(i);
+    li.textContent = `${e.type} — ${e.taskId}`;
+    eventsEl.appendChild(li);
+  }
+
+  function fold(upTo) {
+    const state = {};
+    for (let i = 0; i < upTo; i++) {
+      const e = log[i];
+      state[e.taskId] = state[e.taskId] || {};
+      if (e.type === 'task.created') state[e.taskId].status = 'todo';
+      if (e.type === 'task.started') { state[e.taskId].status = 'in_progress'; state[e.taskId].agent = e.agent; }
+      if (e.type === 'task.completed') { state[e.taskId].status = 'done'; delete state[e.taskId].reason; }
+      if (e.type === 'task.blocked') { state[e.taskId].status = 'blocked'; state[e.taskId].reason = e.reason; }
+    }
+    return state;
+  }
+
+  function render() {
+    const n = Number(scrub.value);
+    countEl.textContent = `${n} / ${log.length} events applied`;
+    stateEl.textContent = JSON.stringify(fold(n), null, 2);
+    eventsEl.querySelectorAll('li').forEach((li) => {
+      li.classList.toggle('fx', Number(li.dataset.idx) < n);
+    });
+  }
+  scrub.addEventListener('input', render);
+  render();
 })();
 </script>
 </body>
