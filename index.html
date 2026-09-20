@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <title>Event-Driven Architecture, Worked Out — Queues, SSE and AI Agents in TypeScript</title>
-<meta name="description" content="An interactive walkthrough of event-driven architecture: what a broker actually guarantees (Kafka, SQS, SNS, EventBridge), what Server-Sent Events really is, how AI model streaming and multi-agent orchestration are both applications of the same mechanism. Built from real broker docs, real captured AI streams, and real agent-scheduler code, in TypeScript.">
+<meta name="description" content="An interactive walkthrough of event-driven architecture: what a broker actually guarantees (Kafka, SQS, SNS, EventBridge), what Server-Sent Events really is, why SSE is a transport rather than an architecture, and how AI model streaming and multi-agent orchestration both ride on the same mechanism. Built from real broker docs, real captured AI streams, and real agent-scheduler code, in TypeScript.">
 <meta name="author" content="Pawe&#322; Pasek">
 <link rel="canonical" href="https://pasekpasek.github.io/event-driven-architecture-worked-out/">
 
@@ -295,7 +295,7 @@ ol.out li.new{color:var(--live)}
     <li><a href="#build-it">02 — If you had to build it</a></li>
     <li><a href="#guarantees">03 — Delivery guarantees, for real</a></li>
     <li><a href="#ordering">04 — Ordering and partitioning</a></li>
-    <li><a href="#sse">05 — What SSE actually is</a></li>
+    <li><a href="#sse">05 — What SSE actually is, and what it isn't</a></li>
     <li><a href="#ai-streaming">06 — AI model streaming as an SSE application</a></li>
     <li><a href="#agents">07 — Agents as event-driven systems</a></li>
     <li><a href="#event-sourcing">08 — Event sourcing and agent state</a></li>
@@ -324,10 +324,49 @@ ol.out li.new{color:var(--live)}
       URL) to "what shape do I emit, what shape do I expect to read." A schema change is now the
       thing that breaks consumers, not a moved endpoint.</li>
   </ol>
-  <p>Everything below is one of these three facts wearing a costume: a Kafka partition is fact 1 with
-  a specific answer to "how many consumers, in what order"; an SSE connection is fact 1 pointed in one
-  direction only; an AI agent reacting to another agent's completion is fact 2 with the agent as both
-  producer and consumer.</p>
+  <p>Most of what follows is one of these three facts wearing a costume: a Kafka partition is fact 1
+  with a specific answer to "how many consumers, in what order"; an AI agent reacting to another
+  agent's completion is fact 2, with the agent as both producer and consumer.</p>
+  <div class="mapwrap">
+    <svg class="map" viewBox="0 0 560 250" role="img" aria-label="Dependency map: every later section hangs off one of the three facts">
+      <g class="ab root"><a href="#truths"><rect x="15" y="10" width="150" height="30" rx="3"/><text x="90" y="30" text-anchor="middle">01 · nobody knows who</text></a></g>
+      <g class="ab root"><a href="#truths"><rect x="205" y="10" width="150" height="30" rx="3"/><text x="280" y="30" text-anchor="middle">02 · already happened</text></a></g>
+      <g class="ab root"><a href="#truths"><rect x="395" y="10" width="150" height="30" rx="3"/><text x="470" y="30" text-anchor="middle">03 · schema coupling</text></a></g>
+
+      <path class="e" d="M90,40 L75,104"/>
+      <path class="e" d="M90,40 L200,104"/>
+      <path class="e" d="M90,40 L70,169"/>
+      <path class="e" d="M280,40 L340,104"/>
+      <path class="e" d="M280,40 L215,169"/>
+      <path class="e" d="M280,40 L345,169"/>
+      <path class="e" d="M470,40 L478,104"/>
+      <path class="e" d="M470,40 L490,169"/>
+
+      <g class="ab"><a href="#build-it"><rect x="15" y="110" width="120" height="26" rx="3"/><text x="75" y="127" text-anchor="middle">§02 build it</text></a></g>
+      <g class="ab"><a href="#guarantees"><rect x="150" y="110" width="120" height="26" rx="3"/><text x="210" y="127" text-anchor="middle">§03 guarantees</text></a></g>
+      <g class="ab"><a href="#agents"><rect x="285" y="110" width="120" height="26" rx="3"/><text x="345" y="127" text-anchor="middle">§07 agents</text></a></g>
+      <g class="ab"><a href="#sse"><rect x="420" y="110" width="120" height="26" rx="3"/><text x="480" y="127" text-anchor="middle">§05 the wire</text></a></g>
+
+      <g class="ab"><a href="#ordering"><rect x="15" y="175" width="120" height="26" rx="3"/><text x="75" y="192" text-anchor="middle">§04 ordering</text></a></g>
+      <g class="ab"><a href="#failure"><rect x="150" y="175" width="120" height="26" rx="3"/><text x="210" y="192" text-anchor="middle">§09 retries</text></a></g>
+      <g class="ab"><a href="#event-sourcing"><rect x="285" y="175" width="120" height="26" rx="3"/><text x="345" y="192" text-anchor="middle">§08 event log</text></a></g>
+      <g class="ab"><a href="#ai-streaming"><rect x="420" y="175" width="120" height="26" rx="3"/><text x="480" y="192" text-anchor="middle">§06 AI streams</text></a></g>
+
+      <g class="goal"><a href="#rules"><rect x="205" y="220" width="150" height="26" rx="3"/><text x="280" y="237" text-anchor="middle">§10 the whole thing</text></a></g>
+    </svg>
+  </div>
+  <div class="mapkey">
+    <span><i class="root"></i> the three facts</span>
+    <span><i class="on"></i> a section derived from one</span>
+    <span>click any box to jump to it</span>
+  </div>
+
+  <p>One section is deliberately not. §05 is about Server-Sent Events, and SSE <em>breaks</em> fact 1:
+  the server holds one specific client's connection and writes straight down it, knowing exactly who
+  is on the other end. That's the opposite of a producer not knowing its consumers — which is
+  precisely why it's worth a section. Every event-driven system eventually has an edge where events
+  stop being broadcast to whoever cares and start being written to one identified reader. SSE is what
+  that edge looks like.</p>
 </section>
 <section id="build-it">
   <div class="sec-head"><span class="sec-num">02</span><h2>If you had to build it</h2></div>
@@ -459,12 +498,46 @@ ol.out li.new{color:var(--live)}
   </div>
 </section>
 <section id="sse">
-  <div class="sec-head"><span class="sec-num">05</span><h2>What SSE actually is</h2></div>
-  <p class="lead">Server-Sent Events: one HTTP response that never ends. No upgrade handshake, no new
-  protocol — just <code>Content-Type: text/event-stream</code> on an ordinary response the server
-  keeps writing to, and a client that knows how to read it as a sequence of events instead of one
-  blob. One direction only: server to client. A client that wants to talk back makes a separate,
-  ordinary HTTP request.</p>
+  <div class="sec-head"><span class="sec-num">05</span><h2>What SSE actually is, and what it isn't</h2></div>
+  <p class="lead">Server-Sent Events is not event-driven architecture. It's a transport — one
+  connection, one identified reader, no broker, no fan-out, no durability. Putting it in this page
+  needs a reason, and the reason is the seam: it's where an event-driven system stops talking to
+  itself and starts writing to somebody.</p>
+
+  <h3>First, the part that really is event-driven</h3>
+  <p>Inside a process, §01's fact 1 is cheap to satisfy. Here is the whole event bus
+  <code>4th-devs</code> runs its agent system on — a sequence counter, a set of listeners, and a
+  bounded buffer of everything already emitted:</p>
+  <pre class="lit"><span class="ln">let _seq = 0</span>
+<span class="ln">const listeners = new Set&lt;Listener&gt;()</span>
+<span class="ln">const buffer: AgentEvent[] = []</span>
+<span class="ln"></span>
+<span class="ln">export const emit = (type: string, data = {}): void =&gt; {</span>
+<span class="ln">  const event = { seq: ++_seq, type, time: new Date().toISOString(), data }</span>
+<span class="ln">  buffer.push(event)</span>
+<span class="ln">  if (buffer.length &gt; MAX_BUFFER) buffer.shift()</span>
+<span class="ln">  for (const listener of listeners) listener(event)</span>
+<span class="ln">}</span>
+<span class="ln"></span>
+<span class="ln">export const subscribe = (listener: Listener) =&gt; {</span>
+<span class="ln">  listeners.add(listener)</span>
+<span class="ln">  return () =&gt; { listeners.delete(listener) }</span>
+<span class="ln">}</span>
+<span class="ln"></span>
+<span class="ln">export const replay = (): readonly AgentEvent[] =&gt; buffer</span></pre>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/events.ts">4th-devs, 05_01_agent_graph/src/events.ts</a>.</p>
+  <p>That is §02's Draft 1 and Draft 2 in about forty lines. <code>emit</code> doesn't know or care
+  who is listening — fact 1, exactly. The bounded <code>buffer</code> plus <code>replay()</code> is a
+  miniature durable log: a listener that attaches late can still be handed everything that already
+  happened. It is the agent system of §07 talking to itself, and it never leaves the process.</p>
+
+  <h3>Then, the wire</h3>
+  <p>Now the events have to reach a dashboard in a browser, which is a different problem: one
+  specific reader, across a process boundary, over HTTP. That's SSE. One HTTP response that never
+  ends — no upgrade handshake, no new protocol, just <code>Content-Type: text/event-stream</code> on
+  an ordinary response the server keeps writing to, and a client that reads it as a sequence of
+  events instead of one blob. One direction only: server to client. A client that wants to talk back
+  makes a separate, ordinary HTTP request.</p>
   <h3>The wire format</h3>
   <p>The body is lines of <code>field: value</code>. A blank line means "dispatch what's buffered so
   far":</p>
@@ -485,9 +558,11 @@ ol.out li.new{color:var(--live)}
     reconnects.</li>
     <li><code>retry:</code> — how many milliseconds to wait before that automatic reconnect.</li>
   </ul>
-  <h3>Real code, not a paraphrase</h3>
-  <p>A minimal SSE server is a handful of lines. This one is quoted, unmodified, from
-  <code>4th-devs</code> (an open-source agent-orchestration course repository):</p>
+  <h3>The seam, in four lines</h3>
+  <p>Here is the same repository's SSE handler, quoted unmodified. Read the last two lines as the
+  join between the two halves of this section — <code>replay()</code> and <code>subscribe()</code>
+  on the left are the in-process bus from above; <code>res.write</code> on the right is one socket
+  belonging to one browser:</p>
   <pre class="lit"><span class="ln">res.writeHead(200, {</span>
 <span class="ln">  'content-type': 'text/event-stream',</span>
 <span class="ln">  'cache-control': 'no-cache',</span>
@@ -497,6 +572,11 @@ ol.out li.new{color:var(--live)}
 <span class="ln">for (const past of replay()) res.write(`data: ${JSON.stringify(past)}\n\n`)</span>
 <span class="ln">const unsubscribe = subscribe(event => res.write(`data: ${JSON.stringify(event)}\n\n`))</span></pre>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/server.ts">4th-devs, 05_01_agent_graph/src/server.ts</a> (<code>sseHandler</code>).</p>
+  <p>That adapter is the whole trick, and it's why "is SSE event-driven?" is the wrong question. The
+  bus is event-driven; the socket isn't; <code>subscribe(event =&gt; res.write(...))</code> is the
+  four-word bridge between them. Swap the right-hand side for a Kafka producer and the left-hand side
+  doesn't change — which is exactly what fact 3 (§01) predicted: the coupling that survives is the
+  shape of the event, not who reads it.</p>
   <p>Notice it replays every buffered past event on every new connection, unconditionally — it never
   reads a <code>Last-Event-ID</code> header at all. That's a legitimate, simpler design for a small
   bounded buffer: the client re-renders from scratch and de-duplicates by id, so exact resumption
@@ -698,10 +778,26 @@ data: {"type":"task.completed","id":"fetch-price"}
     <li>A consumer under at-least-once delivery must be idempotent; a message that keeps failing past
     a limit belongs in a dead-letter queue, not in an infinite retry loop.</li>
   </ol>
-  <p class="caveat">Left out, on purpose, not by oversight: sagas and distributed transactions across
-  services; the transactional outbox pattern; change-data-capture (CDC); exactly-once delivery
-  guaranteed end-to-end across heterogeneous systems (only within a single broker's own transactional
-  features); non-JS/TS ecosystems; anything Windows-specific.</p>
+  <h3>Left out, on purpose</h3>
+  <p>Four things a production system hits almost immediately, named here rather than half-explained:</p>
+  <ul class="plain">
+    <li><strong>The transactional outbox.</strong> Every example on this page publishes an event
+    <em>and</em> writes to a database, and quietly assumes both happen. They can't, atomically, across
+    two systems: the process can die between them. The outbox pattern writes the event into a table in
+    the same transaction as the data, and a separate relay publishes it afterwards — trading immediacy
+    for the guarantee that the fact and its announcement can't disagree.</li>
+    <li><strong>Change-data-capture.</strong> The other answer to the same problem: stop publishing
+    events by hand and derive them from the database's own replication log, so the write <em>is</em>
+    the event. Cheaper to get right, at the cost of events shaped like table rows rather than like
+    domain facts.</li>
+    <li><strong>Sagas.</strong> Once a workflow spans services, there is no transaction to roll back.
+    A saga replaces rollback with explicit compensating actions — refund the payment, release the
+    reservation — which means designing the undo for every step, and accepting that the system is
+    briefly, visibly inconsistent while it runs.</li>
+    <li><strong>End-to-end exactly-once.</strong> §03's exactly-once claims stop at each broker's own
+    boundary. Chaining two systems together doesn't compose their guarantees; the joint is where
+    duplicates reappear, and idempotency (§09) is the only thing that actually travels.</li>
+  </ul>
 </section>
 
 <footer>

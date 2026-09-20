@@ -16,8 +16,11 @@ of the same mechanism.
   from their own docs.
 - **Ordering and partitioning.** Why "happened first" isn't "seen first," with a sandbox over
   partition keys and Message Group IDs.
-- **What SSE actually is.** The wire format, `EventSource`, and a live sandbox running the exact
-  parser this repo's `test-model.ts` verifies against a real chunked HTTP server.
+- **What SSE actually is, and what it isn't.** SSE is a transport, not an architecture — it breaks
+  the "a producer doesn't know its consumers" rule on purpose. The section shows the in-process event
+  bus that *is* event-driven, then the wire that carries it out to a browser, with
+  `subscribe(event => res.write(...))` as the seam — plus a live sandbox running the exact parser
+  this repo's `test-model.ts` verifies against a real chunked HTTP server.
 - **AI model streaming as an SSE application.** A stepper over a real Anthropic streaming tool-call
   turn, watching tool arguments accumulate as partial JSON until the block closes.
 - **Agents as event-driven systems.** A live DAG scheduler sandbox — the same `findReadyTasks`/
@@ -53,9 +56,10 @@ not captured from a live API call; `fixtures/build-fixture.mjs` rebuilds it from
 
 ## Scope
 
-What a JS/TS backend developer needs to reason about queues, SSE and agent orchestration. Sagas and
-distributed transactions, the transactional outbox pattern, CDC, end-to-end exactly-once across
-heterogeneous systems, non-JS/TS ecosystems, and anything Windows-specific are named and left out.
+What a JS/TS backend developer needs to reason about queues, SSE and agent orchestration. Four things
+a production system hits immediately — the transactional outbox, change-data-capture, sagas, and
+end-to-end exactly-once across heterogeneous systems — are named and explained in §10 rather than
+built, since each is a page of its own.
 
 ## Running it
 

@@ -29,10 +29,19 @@ makes something "event-driven" rather than just "asynchronous."
    to "what shape do I emit, what shape do I expect to read." A schema change is now the thing that
    breaks consumers, not a moved endpoint.
 
-Everything below is one of these three facts wearing a costume: a Kafka partition is fact 1 with a
-specific answer to "how many consumers, in what order"; an SSE connection is fact 1 pointed in one
-direction only; an AI agent reacting to another agent's completion is fact 2 with the agent as both
-producer and consumer.
+Most of what follows is one of these three facts wearing a costume: a Kafka partition is fact 1 with
+a specific answer to "how many consumers, in what order"; an AI agent reacting to another agent's
+completion is fact 2, with the agent as both producer and consumer.
+
+One section is deliberately not. §05 is about Server-Sent Events, and SSE breaks fact 1: the server
+holds one specific client's connection and writes straight down it, knowing exactly who is on the
+other end. That is the opposite of a producer not knowing its consumers — which is precisely why it
+is worth a section. Every event-driven system eventually has an edge where events stop being
+broadcast to whoever cares and start being written to one identified reader. SSE is what that edge
+looks like.
+
+The page opens with a clickable dependency map: the three facts across the top, every later section
+hanging off the one it derives from.
 
 ## 02. If you had to build it
 
@@ -100,9 +109,21 @@ The page's sandbox emits events for two keys (sku-1, sku-2) into two partitions 
 combined "topic order" a consumer sees: each key's own events stay ordered relative to each other,
 but the two sequences interleave arbitrarily.
 
-## 05. What SSE actually is
+## 05. What SSE actually is, and what it isn't
 
-Server-Sent Events: one HTTP response that never ends. No upgrade handshake, no new protocol — just
+Server-Sent Events is not event-driven architecture. It is a transport — one connection, one
+identified reader, no broker, no fan-out, no durability. Its place in this page is the seam: it is
+where an event-driven system stops talking to itself and starts writing to somebody.
+
+First, the part that really is event-driven. Inside a process, fact 1 is cheap to satisfy. The whole
+event bus 4th-devs runs its agent system on (05_01_agent_graph/src/events.ts) is a sequence counter,
+a Set of listeners and a bounded buffer: `emit` pushes the event into the buffer and calls every
+listener without knowing or caring who they are; `subscribe` adds one and hands back an unsubscribe;
+`replay()` returns the buffer so a listener that attaches late still gets everything that already
+happened. That is §02's Draft 1 and Draft 2 in about forty lines, and it never leaves the process.
+
+Then, the wire. The events have to reach a dashboard in a browser: one specific reader, across a
+process boundary, over HTTP. That is SSE — one HTTP response that never ends. No upgrade handshake, no new protocol — just
 Content-Type: text/event-stream on an ordinary response the server keeps writing to, and a client
 that knows how to read it as a sequence of events instead of one blob. One direction only: server to
 client. A client that wants to talk back makes a separate, ordinary HTTP request.
@@ -125,6 +146,11 @@ The body is lines of `field: value`. A blank line means "dispatch what's buffere
 A minimal SSE server is a handful of lines, quoted unmodified from 4th-devs
 (05_01_agent_graph/src/server.ts, sseHandler): write the text/event-stream headers, flush them, write
 every buffered past event as `data: ...\n\n`, then subscribe and write each new event the same way.
+
+That adapter is the whole trick, and it is why "is SSE event-driven?" is the wrong question. The bus
+is event-driven; the socket is not; `subscribe(event => res.write(...))` is the bridge between them.
+Swap the right-hand side for a Kafka producer and the left-hand side does not change — which is what
+fact 3 predicted: the coupling that survives is the shape of the event, not who reads it.
 
 Notice it replays every buffered past event on every new connection, unconditionally — it never reads
 a Last-Event-ID header at all. That's a legitimate, simpler design for a small bounded buffer: the
@@ -234,10 +260,24 @@ of committing its offset normally.
 8. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
    limit belongs in a dead-letter queue, not in an infinite retry loop.
 
-Left out, on purpose, not by oversight: sagas and distributed transactions across services; the
-transactional outbox pattern; change-data-capture (CDC); exactly-once delivery guaranteed end-to-end
-across heterogeneous systems (only within a single broker's own transactional features); non-JS/TS
-ecosystems; anything Windows-specific.
+Left out, on purpose — four things a production system hits almost immediately, named rather than
+half-explained:
+
+- The transactional outbox. Every example on this page publishes an event and writes to a database,
+  and quietly assumes both happen. They cannot, atomically, across two systems: the process can die
+  between them. The outbox pattern writes the event into a table in the same transaction as the data,
+  and a separate relay publishes it afterwards — trading immediacy for the guarantee that the fact
+  and its announcement cannot disagree.
+- Change-data-capture. The other answer to the same problem: stop publishing events by hand and
+  derive them from the database's own replication log, so the write is the event. Cheaper to get
+  right, at the cost of events shaped like table rows rather than like domain facts.
+- Sagas. Once a workflow spans services there is no transaction to roll back. A saga replaces
+  rollback with explicit compensating actions — refund the payment, release the reservation — which
+  means designing the undo for every step, and accepting that the system is briefly, visibly
+  inconsistent while it runs.
+- End-to-end exactly-once. §03's exactly-once claims stop at each broker's own boundary. Chaining two
+  systems together does not compose their guarantees; the joint is where duplicates reappear, and
+  idempotency (§09) is the only thing that actually travels.
 
 ## About this page's models
 

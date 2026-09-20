@@ -1,8 +1,9 @@
 # Event-Driven Architecture, Worked Out
 
 > An interactive, single-page explainer for event-driven architecture: what a broker actually
-> guarantees (Kafka, SQS, SNS, EventBridge), what Server-Sent Events really is, and how AI model
-> streaming and multi-agent orchestration are both applications of the same mechanism. The SSE parser
+> guarantees (Kafka, SQS, SNS, EventBridge), why Server-Sent Events is a transport rather than an
+> architecture, and how AI model streaming and multi-agent orchestration both ride on the same
+> mechanism. The SSE parser
 > and DAG scheduler shown are verified against real running code by `test-model.ts`; broker guarantees
 > are cited from official docs. Author: Paweł Pasek.
 
@@ -15,7 +16,11 @@ Key points made on this page:
   order, SQS FIFO is exactly-once/ordered within one Message Group ID; SNS/EventBridge fan out with no
   cross-subscriber ordering (SNS FIFO topics excepted).
 - **Ordering** — scoped to a Kafka partition or an SQS Message Group ID, never to a whole topic/queue.
-- **SSE** — one HTTP response kept open, `Content-Type: text/event-stream`, wire fields
+- **SSE is a transport, not an architecture** — it *breaks* fact 1: the server holds one identified
+  client's connection and writes straight down it. The event-driven half is the in-process bus
+  (emit/subscribe/bounded replay buffer); SSE is the wire that carries its output across a process
+  boundary to a browser, and `subscribe(event => res.write(...))` is the adapter between them. One
+  HTTP response kept open, `Content-Type: text/event-stream`, wire fields
   `data:`/`event:`/`id:`/`retry:`, one direction only; `EventSource` auto-reconnects using
   `Last-Event-ID`.
 - **AI streaming** — the same SSE mechanism with a documented schema:
@@ -29,6 +34,9 @@ Key points made on this page:
 - **Failure handling** — a redelivered event under at-least-once delivery isn't a bug; the real
   backoff formula this page verifies is `min(15000, 1500 * 2^(attempt-1))` ms; a message failing past
   a retry limit belongs in a dead-letter queue.
+- **Named and left out** — the transactional outbox, change-data-capture, sagas, and end-to-end
+  exactly-once across heterogeneous systems: the four things a production system hits immediately,
+  each given a paragraph explaining what it solves rather than being listed and dropped.
 
 ## Page
 
