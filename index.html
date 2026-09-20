@@ -676,7 +676,33 @@ data: {"type":"task.completed","id":"fetch-price"}
     dead-letter pane instead.</p>
   </div>
 </section>
-<section id="rules"><!-- Task 17 --></section>
+<section id="rules">
+  <div class="sec-head"><span class="sec-num">10</span><h2>The whole page in rules, and scope</h2></div>
+  <ol class="plain">
+    <li>A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
+    doesn't un-happen it.</li>
+    <li>"At-least-once" is the practical default everywhere (Kafka, SQS standard, EventBridge);
+    exactly-once is achieved on top of it via idempotency or dedup, not by avoiding redelivery.</li>
+    <li>Ordering is scoped: to a Kafka partition, to an SQS Message Group ID — never to a whole topic
+    or queue.</li>
+    <li>SSE is one HTTP response the server keeps writing to, in the wire format
+    <code>data:</code>/<code>event:</code>/<code>id:</code>/<code>retry:</code>, one direction only.</li>
+    <li>AI model streaming is SSE with a documented event schema:
+    <code>message_start</code> → per-block <code>content_block_start/delta/stop</code> →
+    <code>message_delta</code> → <code>message_stop</code>. Tool-call arguments arrive as JSON
+    fragments that are only safe to parse once their block closes.</li>
+    <li>A multi-agent system is a DAG reacting to <code>done</code> events; the ready set is
+    recomputed every round, the same shape as an event loop's phases one level up.</li>
+    <li>Agent state doesn't have to be stored directly — folding an append-only event log recovers it,
+    for free, until the log itself needs compaction.</li>
+    <li>A consumer under at-least-once delivery must be idempotent; a message that keeps failing past
+    a limit belongs in a dead-letter queue, not in an infinite retry loop.</li>
+  </ol>
+  <p class="caveat">Left out, on purpose, not by oversight: sagas and distributed transactions across
+  services; the transactional outbox pattern; change-data-capture (CDC); exactly-once delivery
+  guaranteed end-to-end across heterogeneous systems (only within a single broker's own transactional
+  features); non-JS/TS ecosystems; anything Windows-specific.</p>
+</section>
 
 <footer>
   <p>Built by <a href="https://github.com/PasekPasek">Paweł Pasek</a>. Companion to
