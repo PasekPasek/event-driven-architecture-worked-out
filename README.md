@@ -30,6 +30,9 @@ of the same mechanism.
   fold.
 - **Failure, retries, poison messages.** The real exponential-backoff formula, visualized, with a
   dead-letter cutoff.
+- **The dual write: outbox and CDC.** Why writing to a database and publishing an event can't be
+  atomic, with a sandbox that kills the process between the two writes so you can watch direct mode
+  lose the event and outbox mode survive it.
 
 ## What is real and what is a model
 
@@ -56,10 +59,9 @@ not captured from a live API call; `fixtures/build-fixture.mjs` rebuilds it from
 
 ## Scope
 
-What a JS/TS backend developer needs to reason about queues, SSE and agent orchestration. Four things
-a production system hits immediately — the transactional outbox, change-data-capture, sagas, and
-end-to-end exactly-once across heterogeneous systems — are named and explained in §10 rather than
-built, since each is a page of its own.
+What a JS/TS backend developer needs to reason about queues, SSE and agent orchestration. The outbox and change-data-capture get a section
+of their own (§10). Sagas and end-to-end exactly-once across heterogeneous systems are named and
+explained in §11 rather than built, since each is a page of its own.
 
 ## Running it
 

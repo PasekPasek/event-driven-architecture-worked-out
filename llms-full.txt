@@ -240,7 +240,34 @@ message to a dead-letter queue after a configured maxReceiveCount; Kafka has no 
 convention is application-level — publish the poison message to a separate <topic>.DLT topic instead
 of committing its offset normally.
 
-## 10. The whole page in rules, and scope
+## 10. The dual write: outbox and CDC
+
+Every example on this page has quietly cheated. Each one writes something down and publishes an event
+about it, and assumes both happen. They cannot — not atomically. A database transaction does not
+extend to Kafka, and the process can die in the gap. Write first and publish second: the process dies
+in between and the order exists while nobody was told. Publish first and write second: you have
+announced a fact that is not true yet. No ordering of the two calls fixes it, because the problem is
+not the order — it is that two separate systems cannot agree without a transaction spanning both.
+
+The outbox: stop doing two writes. In the same local transaction that stores the order, insert a row
+into an `outbox` table describing the event. One transaction, one system, atomic. A separate relay
+reads unpublished outbox rows, pushes them to the broker and marks them sent. The crash does not
+disappear, it becomes survivable: die before the relay runs and the row is still there on restart;
+die after publishing but before marking it sent and the relay publishes twice — at-least-once again
+(§03), which is why the consumer must be idempotent (§09). The outbox does not buy exactly-once; it
+buys "never silently lost".
+
+CDC answers the same question from the other side: instead of writing an event by hand, read the
+database's own replication log (Postgres' WAL, MySQL's binlog) and turn each committed row change
+into an event. The write is the event, so there is nothing to keep in sync. Debezium is the usual
+implementation. The trade is fact 3 collected: with an outbox you choose the event's shape; with CDC
+the shape is whatever your table looks like, so a column rename breaks every consumer — the schema
+stops being an internal detail and becomes the public contract.
+
+The page's sandbox lets you tick "crash", place an order and compare the modes: direct dual write
+loses the event permanently, outbox mode leaves a pending row the relay still publishes.
+
+## 11. The whole page in rules, and scope
 
 1. A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
    doesn't un-happen it.
@@ -259,18 +286,13 @@ of committing its offset normally.
    free, until the log itself needs compaction.
 8. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
    limit belongs in a dead-letter queue, not in an infinite retry loop.
+9. You cannot write to a database and publish an event atomically. Make it one local write — an
+   outbox row in the same transaction, or the replication log itself (CDC) — and let a relay publish,
+   or accept that a crash in the gap loses the event silently.
 
-Left out, on purpose — four things a production system hits almost immediately, named rather than
-half-explained:
+Left out, on purpose. The outbox and change-data-capture have a section of their own (§10). Two more
+a production system hits early, named rather than half-explained:
 
-- The transactional outbox. Every example on this page publishes an event and writes to a database,
-  and quietly assumes both happen. They cannot, atomically, across two systems: the process can die
-  between them. The outbox pattern writes the event into a table in the same transaction as the data,
-  and a separate relay publishes it afterwards — trading immediacy for the guarantee that the fact
-  and its announcement cannot disagree.
-- Change-data-capture. The other answer to the same problem: stop publishing events by hand and
-  derive them from the database's own replication log, so the write is the event. Cheaper to get
-  right, at the cost of events shaped like table rows rather than like domain facts.
 - Sagas. Once a workflow spans services there is no transaction to roll back. A saga replaces
   rollback with explicit compensating actions — refund the payment, release the reservation — which
   means designing the undo for every step, and accepting that the system is briefly, visibly

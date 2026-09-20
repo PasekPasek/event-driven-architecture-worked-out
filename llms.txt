@@ -34,9 +34,10 @@ Key points made on this page:
 - **Failure handling** — a redelivered event under at-least-once delivery isn't a bug; the real
   backoff formula this page verifies is `min(15000, 1500 * 2^(attempt-1))` ms; a message failing past
   a retry limit belongs in a dead-letter queue.
-- **Named and left out** — the transactional outbox, change-data-capture, sagas, and end-to-end
-  exactly-once across heterogeneous systems: the four things a production system hits immediately,
-  each given a paragraph explaining what it solves rather than being listed and dropped.
+- **The dual write** — you cannot write to a database and publish an event atomically. The outbox
+  pattern makes it one local transaction plus a relay; change-data-capture derives events from the
+  database's own replication log instead, at the cost of your table schema becoming the public
+  contract. Sagas and end-to-end exactly-once are named and left out.
 
 ## Page
 

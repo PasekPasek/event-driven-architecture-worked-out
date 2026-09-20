@@ -300,7 +300,8 @@ ol.out li.new{color:var(--live)}
     <li><a href="#agents">07 — Agents as event-driven systems</a></li>
     <li><a href="#event-sourcing">08 — Event sourcing and agent state</a></li>
     <li><a href="#failure">09 — Failure, retries, poison messages</a></li>
-    <li><a href="#rules">10 — The whole page in rules, and scope</a></li>
+    <li><a href="#dual-write">10 — The dual write: outbox and CDC</a></li>
+    <li><a href="#rules">11 — The whole page in rules, and scope</a></li>
   </ol>
 </header>
 
@@ -328,7 +329,7 @@ ol.out li.new{color:var(--live)}
   with a specific answer to "how many consumers, in what order"; an AI agent reacting to another
   agent's completion is fact 2, with the agent as both producer and consumer.</p>
   <div class="mapwrap">
-    <svg class="map" viewBox="0 0 560 250" role="img" aria-label="Dependency map: every later section hangs off one of the three facts">
+    <svg class="map" viewBox="0 0 700 250" role="img" aria-label="Dependency map: every later section hangs off one of the three facts">
       <g class="ab root"><a href="#truths"><rect x="15" y="10" width="150" height="30" rx="3"/><text x="90" y="30" text-anchor="middle">01 · nobody knows who</text></a></g>
       <g class="ab root"><a href="#truths"><rect x="205" y="10" width="150" height="30" rx="3"/><text x="280" y="30" text-anchor="middle">02 · already happened</text></a></g>
       <g class="ab root"><a href="#truths"><rect x="395" y="10" width="150" height="30" rx="3"/><text x="470" y="30" text-anchor="middle">03 · schema coupling</text></a></g>
@@ -339,6 +340,7 @@ ol.out li.new{color:var(--live)}
       <path class="e" d="M280,40 L340,104"/>
       <path class="e" d="M280,40 L215,169"/>
       <path class="e" d="M280,40 L345,169"/>
+      <path class="e" d="M280,40 L600,169"/>
       <path class="e" d="M470,40 L478,104"/>
       <path class="e" d="M470,40 L490,169"/>
 
@@ -352,7 +354,8 @@ ol.out li.new{color:var(--live)}
       <g class="ab"><a href="#event-sourcing"><rect x="285" y="175" width="120" height="26" rx="3"/><text x="345" y="192" text-anchor="middle">§08 event log</text></a></g>
       <g class="ab"><a href="#ai-streaming"><rect x="420" y="175" width="120" height="26" rx="3"/><text x="480" y="192" text-anchor="middle">§06 AI streams</text></a></g>
 
-      <g class="goal"><a href="#rules"><rect x="205" y="220" width="150" height="26" rx="3"/><text x="280" y="237" text-anchor="middle">§10 the whole thing</text></a></g>
+      <g class="ab"><a href="#dual-write"><rect x="555" y="175" width="120" height="26" rx="3"/><text x="615" y="192" text-anchor="middle">§10 dual write</text></a></g>
+      <g class="goal"><a href="#rules"><rect x="275" y="220" width="150" height="26" rx="3"/><text x="350" y="237" text-anchor="middle">§11 the whole thing</text></a></g>
     </svg>
   </div>
   <div class="mapkey">
@@ -375,37 +378,19 @@ ol.out li.new{color:var(--live)}
   takes.</p>
 
   <h3>Draft 1 — in-process, and gone the moment it's handled</h3>
-  <pre class="lit"><span class="ln">import { EventEmitter } from "node:events";</span>
-<span class="ln"></span>
-<span class="ln">const bus = new EventEmitter();</span>
-<span class="ln">bus.on("price.changed", (e: { productId: string; price: number }) => {</span>
-<span class="ln">  console.log(`repricing ${e.productId} at ${e.price}`);</span>
-<span class="ln">});</span>
-<span class="ln">bus.emit("price.changed", { productId: "sku-1", price: 1999 });</span></pre>
+  <pre class="lit"><span class="ln">import { EventEmitter } from "node:events";</span><span class="ln"></span><span class="ln">const bus = new EventEmitter();</span><span class="ln">bus.on("price.changed", (e: { productId: string; price: number }) => {</span><span class="ln">  console.log(`repricing ${e.productId} at ${e.price}`);</span><span class="ln">});</span><span class="ln">bus.emit("price.changed", { productId: "sku-1", price: 1999 });</span></pre>
   <p>Synchronous, at-most-once, and the event never existed outside process memory: crash between
   <code>emit</code> and the listener finishing, and it's simply gone. Fine for coordinating within one
   process; not durable enough for anything that must survive a restart.</p>
 
   <h3>Draft 2 — durable, but dispatched once</h3>
-  <pre class="lit"><span class="ln">import { appendFileSync } from "node:fs";</span>
-<span class="ln"></span>
-<span class="ln">function publish(event: unknown): void {</span>
-<span class="ln">  appendFileSync("events.log", JSON.stringify(event) + "\n"); // durable</span>
-<span class="ln">  bus.emit("price.changed", event); // still only reaches whoever is listening *now*</span>
-<span class="ln">}</span></pre>
+  <pre class="lit"><span class="ln">import { appendFileSync } from "node:fs";</span><span class="ln"></span><span class="ln">function publish(event: unknown): void {</span><span class="ln">  appendFileSync("events.log", JSON.stringify(event) + "\n"); // durable</span><span class="ln">  bus.emit("price.changed", event); // still only reaches whoever is listening *now*</span><span class="ln">}</span></pre>
   <p>The fact survives a crash in the log. But dispatch is still a one-shot, in-memory broadcast: a
   consumer that starts five minutes later, or was down when it happened, never sees it. Durability of
   the fact and delivery to a consumer are two different problems.</p>
 
   <h3>Draft 3 — a reader tracks its own position</h3>
-  <pre class="lit"><span class="ln">let offset = 0;</span>
-<span class="ln"></span>
-<span class="ln">function poll(): unknown[] {</span>
-<span class="ln">  const lines = readFileSync("events.log", "utf8").trim().split("\n");</span>
-<span class="ln">  const fresh = lines.slice(offset).map((l) => JSON.parse(l));</span>
-<span class="ln">  offset = lines.length; // remembered *after* processing, not before</span>
-<span class="ln">  return fresh;</span>
-<span class="ln">}</span></pre>
+  <pre class="lit"><span class="ln">let offset = 0;</span><span class="ln"></span><span class="ln">function poll(): unknown[] {</span><span class="ln">  const lines = readFileSync("events.log", "utf8").trim().split("\n");</span><span class="ln">  const fresh = lines.slice(offset).map((l) => JSON.parse(l));</span><span class="ln">  offset = lines.length; // remembered *after* processing, not before</span><span class="ln">  return fresh;</span><span class="ln">}</span></pre>
   <p>Now a consumer that restarts can resume from its own <code>offset</code> instead of the
   producer's broadcast moment. But note the comment: if the process crashes after reading a line and
   before persisting the new <code>offset</code>, that event is redelivered on restart. That's not a
@@ -477,6 +462,7 @@ ol.out li.new{color:var(--live)}
   partition key: order is preserved only within one group.</p>
   <div class="demo">
     <h4>Sandbox — partition key vs. ordering</h4>
+    <p class="ctlnote">Emit a few events in each mode, then compare the wide bottom panel against the two above it. With one key everything lands in one partition and arrival order is the order. With mixed keys each SKU stays ordered <em>relative to itself</em>, but the combined view interleaves the two sequences arbitrarily — and that combined order is the only one a consumer of the whole topic sees.</p>
     <div class="ctl">
       <label><input type="radio" name="pk-mode" value="same" checked> same key for every event</label>
       <label><input type="radio" name="pk-mode" value="mixed"> mixed keys (sku-1 / sku-2)</label>
@@ -491,10 +477,7 @@ ol.out li.new{color:var(--live)}
       <div class="pane"><h4>partition 1</h4><ul class="rows" data-partition="1"><li class="empty">(empty)</li></ul></div>
       <div class="pane wide"><h4>consumer sees (topic order)</h4><ul class="rows" data-combined><li class="empty">(empty)</li></ul></div>
     </div>
-    <p class="hint" data-hint>Click "emit" a few times in "mixed keys" mode: sku-1 and sku-2 land in
-    different partitions, and the combined view shows them interleaved — sku-1's events stay ordered
-    relative to each other, sku-2's stay ordered relative to each other, but the two sequences
-    interleave arbitrarily.</p>
+
   </div>
 </section>
 <section id="sse">
@@ -508,23 +491,7 @@ ol.out li.new{color:var(--live)}
   <p>Inside a process, §01's fact 1 is cheap to satisfy. Here is the whole event bus
   <code>4th-devs</code> runs its agent system on — a sequence counter, a set of listeners, and a
   bounded buffer of everything already emitted:</p>
-  <pre class="lit"><span class="ln">let _seq = 0</span>
-<span class="ln">const listeners = new Set&lt;Listener&gt;()</span>
-<span class="ln">const buffer: AgentEvent[] = []</span>
-<span class="ln"></span>
-<span class="ln">export const emit = (type: string, data = {}): void =&gt; {</span>
-<span class="ln">  const event = { seq: ++_seq, type, time: new Date().toISOString(), data }</span>
-<span class="ln">  buffer.push(event)</span>
-<span class="ln">  if (buffer.length &gt; MAX_BUFFER) buffer.shift()</span>
-<span class="ln">  for (const listener of listeners) listener(event)</span>
-<span class="ln">}</span>
-<span class="ln"></span>
-<span class="ln">export const subscribe = (listener: Listener) =&gt; {</span>
-<span class="ln">  listeners.add(listener)</span>
-<span class="ln">  return () =&gt; { listeners.delete(listener) }</span>
-<span class="ln">}</span>
-<span class="ln"></span>
-<span class="ln">export const replay = (): readonly AgentEvent[] =&gt; buffer</span></pre>
+  <pre class="lit"><span class="ln">let _seq = 0</span><span class="ln">const listeners = new Set&lt;Listener&gt;()</span><span class="ln">const buffer: AgentEvent[] = []</span><span class="ln"></span><span class="ln">export const emit = (type: string, data = {}): void =&gt; {</span><span class="ln">  const event = { seq: ++_seq, type, time: new Date().toISOString(), data }</span><span class="ln">  buffer.push(event)</span><span class="ln">  if (buffer.length &gt; MAX_BUFFER) buffer.shift()</span><span class="ln">  for (const listener of listeners) listener(event)</span><span class="ln">}</span><span class="ln"></span><span class="ln">export const subscribe = (listener: Listener) =&gt; {</span><span class="ln">  listeners.add(listener)</span><span class="ln">  return () =&gt; { listeners.delete(listener) }</span><span class="ln">}</span><span class="ln"></span><span class="ln">export const replay = (): readonly AgentEvent[] =&gt; buffer</span></pre>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/events.ts">4th-devs, 05_01_agent_graph/src/events.ts</a>.</p>
   <p>That is §02's Draft 1 and Draft 2 in about forty lines. <code>emit</code> doesn't know or care
   who is listening — fact 1, exactly. The bounded <code>buffer</code> plus <code>replay()</code> is a
@@ -541,12 +508,7 @@ ol.out li.new{color:var(--live)}
   <h3>The wire format</h3>
   <p>The body is lines of <code>field: value</code>. A blank line means "dispatch what's buffered so
   far":</p>
-  <pre class="lit"><span class="ln">id: 42</span>
-<span class="ln">event: task.completed</span>
-<span class="ln">data: {"taskId":"write-intro","actor":"writer"}</span>
-<span class="ln"></span>
-<span class="ln">data: a plain message with no id or type — dispatched as "message"</span>
-<span class="ln"></span></pre>
+  <pre class="lit"><span class="ln">id: 42</span><span class="ln">event: task.completed</span><span class="ln">data: {"taskId":"write-intro","actor":"writer"}</span><span class="ln"></span><span class="ln">data: a plain message with no id or type — dispatched as "message"</span><span class="ln"></span></pre>
   <ul class="plain">
     <li><code>data:</code> — the payload. Multiple <code>data:</code> lines before a blank line are
     joined with newlines into one event.</li>
@@ -563,14 +525,7 @@ ol.out li.new{color:var(--live)}
   join between the two halves of this section — <code>replay()</code> and <code>subscribe()</code>
   on the left are the in-process bus from above; <code>res.write</code> on the right is one socket
   belonging to one browser:</p>
-  <pre class="lit"><span class="ln">res.writeHead(200, {</span>
-<span class="ln">  'content-type': 'text/event-stream',</span>
-<span class="ln">  'cache-control': 'no-cache',</span>
-<span class="ln">  connection: 'keep-alive',</span>
-<span class="ln">})</span>
-<span class="ln">res.flushHeaders()</span>
-<span class="ln">for (const past of replay()) res.write(`data: ${JSON.stringify(past)}\n\n`)</span>
-<span class="ln">const unsubscribe = subscribe(event => res.write(`data: ${JSON.stringify(event)}\n\n`))</span></pre>
+  <pre class="lit"><span class="ln">res.writeHead(200, {</span><span class="ln">  'content-type': 'text/event-stream',</span><span class="ln">  'cache-control': 'no-cache',</span><span class="ln">  connection: 'keep-alive',</span><span class="ln">})</span><span class="ln">res.flushHeaders()</span><span class="ln">for (const past of replay()) res.write(`data: ${JSON.stringify(past)}\n\n`)</span><span class="ln">const unsubscribe = subscribe(event => res.write(`data: ${JSON.stringify(event)}\n\n`))</span></pre>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/server.ts">4th-devs, 05_01_agent_graph/src/server.ts</a> (<code>sseHandler</code>).</p>
   <p>That adapter is the whole trick, and it's why "is SSE event-driven?" is the wrong question. The
   bus is event-driven; the socket isn't; <code>subscribe(event =&gt; res.write(...))</code> is the
@@ -581,36 +536,31 @@ ol.out li.new{color:var(--live)}
   reads a <code>Last-Event-ID</code> header at all. That's a legitimate, simpler design for a small
   bounded buffer: the client re-renders from scratch and de-duplicates by id, so exact resumption
   doesn't need to be the server's job. The client side is equally small:</p>
-  <pre class="lit"><span class="ln">const es = new EventSource("/events");</span>
-<span class="ln">es.onmessage = (e) => { const ev = JSON.parse(e.data); handleEvent(ev); };</span></pre>
+  <pre class="lit"><span class="ln">const es = new EventSource("/events");</span><span class="ln">es.onmessage = (e) => { const ev = JSON.parse(e.data); handleEvent(ev); };</span></pre>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/dashboard/app.js">4th-devs, 05_01_agent_graph/src/dashboard/app.js</a>.</p>
 
   <div class="demo">
-    <h4>Sandbox — the same parser this page's <code>test-model.ts</code> runs against a real server</h4>
+    <h4>Sandbox — bytes arrive in chunks, events come out on blank lines</h4>
+    <p class="ctlnote">The server wrote one stream; the network hands it over in whatever pieces it
+    likes. Click through the chunks and watch the middle panel: that's the half-finished line the
+    parser is holding. An event only appears on the right when a <em>blank line</em> arrives.</p>
     <div class="simgrid">
       <div class="pane">
-        <h4>raw bytes over the wire</h4>
-        <textarea data-sse-input rows="6" style="width:100%;background:var(--well);color:var(--ink);border:1px solid var(--etch);border-radius:var(--r);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px">id: 1
-data: {"type":"task.started","id":"fetch-price"}
-
-id: 2
-data: {"type":"task.completed","id":"fetch-price"}
-
-</textarea>
+        <h4>the stream, as the server wrote it</h4>
+        <pre data-sse-stream style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere"></pre>
       </div>
       <div class="pane">
-        <h4>what the client sees</h4>
-        <ul class="rows" data-sse-out><li class="empty">(click "send")</li></ul>
+        <h4>parser buffer — an incomplete line</h4>
+        <pre data-sse-buf style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--warn)">(empty)</pre>
+        <h4 style="margin-top:14px">dispatched to the client</h4>
+        <ul class="rows" data-sse-out><li class="empty">(nothing yet)</li></ul>
       </div>
     </div>
     <div class="controls">
-      <button type="button" data-sse-send>send</button>
-      <button type="button" class="ghost" data-sse-reconnect>disconnect + reconnect (replay)</button>
+      <button type="button" data-sse-next>receive next chunk</button>
+      <button type="button" class="ghost" data-sse-reset>reset</button>
     </div>
-    <p class="hint" data-sse-hint>"send" feeds the raw bytes above through the exact
-    <code>createSseParser</code> function this page verifies against a real chunked HTTP server.
-    "disconnect + reconnect" clears the client panel and re-feeds the same buffer, the way
-    <code>4th-devs</code>'s server replays on every new connection.</p>
+    <p class="hint" data-sse-hint>Five chunks. The first one is cut in the middle of a field name.</p>
   </div>
 </section>
 <section id="ai-streaming">
@@ -636,6 +586,7 @@ data: {"type":"task.completed","id":"fetch-price"}
 
   <div class="demo">
     <h4>Sandbox — stepping through a real captured tool-call turn</h4>
+    <p class="ctlnote">Press "next chunk" repeatedly. Watch the lower-right panel: the tool's arguments arrive as a string that is <em>not valid JSON</em> until the block closes. That is the whole reason a client accumulates deltas instead of parsing each one.</p>
     <div class="simgrid">
       <div class="pane">
         <h4>SSE event</h4>
@@ -679,8 +630,9 @@ data: {"type":"task.completed","id":"fetch-price"}
 
   <div class="demo">
     <h4>Sandbox — the exact scheduler this page's <code>test-model.ts</code> verifies</h4>
+    <p class="ctlnote">Five tasks. An arrow runs from a task to whatever is waiting on it; the dashed one is a parent/child link rather than a dependency. Click "run next round" and watch the labels: only tasks whose dependencies are <em>all</em> done run in a given round, so price-check cannot go in round 1 no matter how many times you click — it is waiting on three things at once.</p>
     <div class="mapwrap">
-      <svg class="map" viewBox="0 0 560 220" data-agent-map></svg>
+      <svg class="map" viewBox="0 0 680 274" data-agent-map role="img" aria-label="Task dependency graph: fetch-price, fetch-inventory and sanity-check all feed price-check, which feeds notify"></svg>
     </div>
     <div class="controls">
       <button type="button" data-agent-round>run next round</button>
@@ -698,9 +650,7 @@ data: {"type":"task.completed","id":"fetch-price"}
   trade of storage simplicity for compute-on-read.</p>
   <p><code>4th-devs</code> writes exactly this: an append-only <code>events.jsonl</code>, one JSON
   object per line, that's never edited, only appended to:</p>
-  <pre class="lit"><span class="ln">{"type":"task.completed","round":3,"at":"2026-02-16T12:00:00.000Z",</span>
-<span class="ln"> "agent":"writer","taskId":"write-events-section",</span>
-<span class="ln"> "data":{"turns":2,"estimated_tokens":1800,"actual_tokens":1690}}</span></pre>
+  <pre class="lit"><span class="ln">{"type":"task.completed","round":3,"at":"2026-02-16T12:00:00.000Z",</span><span class="ln"> "agent":"writer","taskId":"write-events-section",</span><span class="ln"> "data":{"turns":2,"estimated_tokens":1800,"actual_tokens":1690}}</span></pre>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/03_02_events/docs/schemas.md">4th-devs, 03_02_events/docs/schemas.md</a>.</p>
   <p>Two things fall out for free. Crash recovery: restart, replay the log, and the in-memory state is
   exactly what it was — there is no separate "did the state file get corrupted" failure mode, because
@@ -714,6 +664,7 @@ data: {"type":"task.completed","id":"fetch-price"}
 
   <div class="demo">
     <h4>Sandbox — state as a fold over the log</h4>
+    <p class="ctlnote">Drag the slider. The right-hand panel is not stored anywhere — it is rebuilt from nothing every time you move, by replaying the log up to that point. Watch notify go in_progress → blocked → done, and its blocked reason vanish when the completion overwrites it.</p>
     <div class="ctl">
       <input type="range" min="0" max="6" value="0" data-log-scrub>
       <output data-log-count>0 / 6 events applied</output>
@@ -731,8 +682,7 @@ data: {"type":"task.completed","id":"fetch-price"}
   to converge to the same result (idempotency), or duplicates corrupt state.</p>
   <p>The real backoff formula this page's <code>test-model.ts</code> verified against
   <code>4th-devs</code>' <code>recovery.ts</code>:</p>
-  <pre class="lit"><span class="ln">const delay = Math.min(15_000, 1_500 * 2 ** (attempt - 1));</span>
-<span class="ln">// attempt 1: 1500ms  2: 3000ms  3: 6000ms  4: 12000ms  5+: 15000ms (capped)</span></pre>
+  <pre class="lit"><span class="ln">const delay = Math.min(15_000, 1_500 * 2 ** (attempt - 1));</span><span class="ln">// attempt 1: 1500ms  2: 3000ms  3: 6000ms  4: 12000ms  5+: 15000ms (capped)</span></pre>
   <p>A message that keeps failing past a limit — <code>4th-devs</code> caps auto-retry at 3 attempts —
   is a poison message: something is genuinely wrong with it, not just transiently unlucky, and
   retrying forever would starve everything behind it. Real brokers name this explicitly: SQS's
@@ -746,6 +696,7 @@ data: {"type":"task.completed","id":"fetch-price"}
 
   <div class="demo">
     <h4>Sandbox — the verified backoff formula, and where it gives up</h4>
+    <p class="ctlnote">Each click is one more failure. The gaps are the real delays the formula produces — 1500, then 3000, then 6000 ms — and after the third retry the message stops being retried at all and is dead-lettered, because something is wrong with the message, not the timing.</p>
     <div class="tlwrap"><svg class="tl" viewBox="0 0 560 140" data-retry-tl></svg></div>
     <div class="controls">
       <button type="button" data-retry-fail>attempt fails again</button>
@@ -756,8 +707,60 @@ data: {"type":"task.completed","id":"fetch-price"}
     dead-letter pane instead.</p>
   </div>
 </section>
+<section id="dual-write">
+  <div class="sec-head"><span class="sec-num">10</span><h2>The dual write: outbox and CDC</h2></div>
+  <p class="lead">Every example on this page has quietly cheated. Each one writes something down
+  <em>and</em> publishes an event about it, and assumes both happen. They can't — not atomically.
+  Your database transaction does not extend to Kafka, and the process can die in the gap.</p>
+  <p>Write first, publish second: the process dies in between, and the order exists while nobody was
+  ever told. Publish first, write second: you have announced a fact that isn't true yet, and may
+  never become true. There is no ordering of the two calls that fixes this, because the problem isn't
+  the order — it's that two separate systems can't agree without a transaction spanning both.</p>
+
+  <h3>The outbox: make it one write</h3>
+  <p>Stop trying to do two writes. In the same local transaction that stores the order, insert a row
+  into an <code>outbox</code> table describing the event. One transaction, one system, atomic — the
+  order and the intent to announce it either both land or neither does. A separate relay then reads
+  unpublished outbox rows and pushes them to the broker, marking them sent.</p>
+  <p>The crash doesn't disappear; it becomes survivable. Die before the relay runs and the outbox row
+  is still sitting there on restart. Die after publishing but before marking it sent, and the relay
+  publishes it twice — which is at-least-once again (§03), and exactly why the consumer has to be
+  idempotent (§09). The outbox doesn't buy exactly-once; it buys "never silently lost".</p>
+
+  <h3>CDC: don't write the event at all</h3>
+  <p>Change-data-capture answers the same question from the other side. Instead of writing an event
+  by hand, read the database's own replication log — Postgres' WAL, MySQL's binlog — and turn each
+  committed row change into an event. The write <em>is</em> the event, so there is nothing to keep in
+  sync and no outbox table to maintain. Debezium is the usual implementation.</p>
+  <p class="caveat">The trade is §01's fact 3, collected. With an outbox you choose the event's shape:
+  <code>order.placed</code>, carrying the fields you meant. With CDC the shape is whatever your table
+  looks like, so a column rename is a breaking change for every consumer — your schema stops being an
+  internal detail and becomes the public contract. Cheaper to run, more expensive to evolve.</p>
+
+  <div class="demo">
+    <h4>Sandbox — kill the process between the two writes</h4>
+    <p class="ctlnote">Tick "crash", place an order, then compare the two modes. Direct mode loses the
+    event permanently. Outbox mode survives it, because the pending row is still there for the relay.</p>
+    <div class="ctl">
+      <label><input type="radio" name="dw-mode" value="direct" checked> direct dual write</label>
+      <label><input type="radio" name="dw-mode" value="outbox"> outbox + relay</label>
+      <label><input type="checkbox" data-dw-crash> crash right after the database write</label>
+    </div>
+    <div class="controls">
+      <button type="button" data-dw-place>place an order</button>
+      <button type="button" data-dw-relay>run the relay</button>
+      <button type="button" class="ghost" data-dw-reset>reset</button>
+    </div>
+    <div class="qgrid">
+      <div class="pane"><h4>database</h4><ul class="rows" data-dw-db><li class="empty">(empty)</li></ul></div>
+      <div class="pane"><h4>outbox table</h4><ul class="rows" data-dw-outbox><li class="empty">(empty)</li></ul></div>
+      <div class="pane"><h4>broker</h4><ul class="rows" data-dw-broker><li class="empty">(empty)</li></ul></div>
+    </div>
+    <p class="hint" data-dw-verdict>Nothing placed yet.</p>
+  </div>
+</section>
 <section id="rules">
-  <div class="sec-head"><span class="sec-num">10</span><h2>The whole page in rules, and scope</h2></div>
+  <div class="sec-head"><span class="sec-num">11</span><h2>The whole page in rules, and scope</h2></div>
   <ol class="plain">
     <li>A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
     doesn't un-happen it.</li>
@@ -777,19 +780,13 @@ data: {"type":"task.completed","id":"fetch-price"}
     for free, until the log itself needs compaction.</li>
     <li>A consumer under at-least-once delivery must be idempotent; a message that keeps failing past
     a limit belongs in a dead-letter queue, not in an infinite retry loop.</li>
+    <li>You cannot write to a database and publish an event atomically. Make it one local write — an
+    outbox row in the same transaction, or the replication log itself (CDC) — and let a relay do the
+    publishing, or accept that a crash in the gap loses the event silently.</li>
   </ol>
   <h3>Left out, on purpose</h3>
-  <p>Four things a production system hits almost immediately, named here rather than half-explained:</p>
+  <p>The outbox and change-data-capture got a section of their own (§10). Two more a production system hits early, named here rather than half-explained:</p>
   <ul class="plain">
-    <li><strong>The transactional outbox.</strong> Every example on this page publishes an event
-    <em>and</em> writes to a database, and quietly assumes both happen. They can't, atomically, across
-    two systems: the process can die between them. The outbox pattern writes the event into a table in
-    the same transaction as the data, and a separate relay publishes it afterwards — trading immediacy
-    for the guarantee that the fact and its announcement can't disagree.</li>
-    <li><strong>Change-data-capture.</strong> The other answer to the same problem: stop publishing
-    events by hand and derive them from the database's own replication log, so the write <em>is</em>
-    the event. Cheaper to get right, at the cost of events shaped like table rows rather than like
-    domain facts.</li>
     <li><strong>Sagas.</strong> Once a workflow spans services, there is no transaction to roll back.
     A saga replaces rollback with explicit compensating actions — refund the payment, release the
     reservation — which means designing the undo for every step, and accepting that the system is
@@ -865,6 +862,10 @@ function createSseParser() {
     get lastEventId() {
       return lastEventId;
     },
+    // the partial line held back until more bytes arrive; §05's sandbox displays it
+    get buffered() {
+      return carry;
+    },
   };
 }
 /* MODEL:sse END */
@@ -872,22 +873,59 @@ function createSseParser() {
 (() => {
   const root = document.getElementById('sse');
   if (!root) return;
-  const input = root.querySelector('[data-sse-input]');
-  const out = root.querySelector('[data-sse-out]');
+  const streamEl = root.querySelector('[data-sse-stream]');
+  const bufEl = root.querySelector('[data-sse-buf]');
+  const outEl = root.querySelector('[data-sse-out]');
+  const hintEl = root.querySelector('[data-sse-hint]');
+
+  // One stream, deliberately chopped where a real socket might chop it.
+  const CHUNKS = [
+    { bytes: 'id: 1\nda',
+      note: 'Two lines arrived — but the second is cut mid-word, at "da". The parser keeps that '
+          + 'fragment and waits. You cannot act on half a field name.' },
+    { bytes: 'ta: {"type":"task.started","id":"fetch-price"}\n',
+      note: 'The rest of the line landed, so the buffer is empty again and the data: field is '
+          + 'understood. Still nothing dispatched: SSE dispatches on a blank line, and none has come.' },
+    { bytes: '\n',
+      note: 'One newline, making the blank line. Now the buffered event is dispatched — three lines '
+          + 'of input became one event.' },
+    { bytes: ': keep-alive\n\n',
+      note: 'A line starting with ":" is a comment. Servers send these so idle proxies do not close '
+          + 'the connection. It dispatches nothing.' },
+    { bytes: 'id: 2\nevent: task.completed\ndata: {"id":"fetch-price"}\n\n',
+      note: 'A whole event in one chunk this time, and it names a type — so it dispatches as '
+          + '"task.completed" rather than the default "message".' },
+  ];
+  const FULL = CHUNKS.map((c) => c.bytes).join('');
+
   let parser = createSseParser();
+  let i = 0;
   let events = [];
 
+  function renderStream() {
+    const consumed = CHUNKS.slice(0, i).map((c) => c.bytes).join('').length;
+    streamEl.textContent = '';
+    const done = document.createElement('span');
+    done.textContent = FULL.slice(0, consumed);
+    done.style.color = 'var(--live)';
+    const todo = document.createElement('span');
+    todo.textContent = FULL.slice(consumed);
+    todo.style.opacity = '.45';
+    streamEl.append(done, todo);
+  }
+
   function renderEvents() {
-    out.innerHTML = '';
-    if (events.length === 0) {
-      const empty = document.createElement('li');
-      empty.className = 'empty';
-      empty.textContent = '(click "send")';
-      out.appendChild(empty);
+    outEl.innerHTML = '';
+    if (!events.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = '(nothing yet)';
+      outEl.appendChild(li);
       return;
     }
     for (const e of events) {
       const head = document.createElement('li');
+      head.className = 'fx';
       const type = document.createElement('span');
       type.textContent = e.event;
       const id = document.createElement('span');
@@ -897,19 +935,36 @@ function createSseParser() {
       const data = document.createElement('li');
       data.className = 'empty';
       data.textContent = e.data;
-      out.append(head, data);
+      outEl.append(head, data);
     }
   }
 
-  root.querySelector('[data-sse-send]').addEventListener('click', () => {
-    events.push(...parser.push(input.value));
+  function render() {
+    renderStream();
+    const buf = parser.buffered;
+    bufEl.textContent = buf === '' ? '(empty — no partial line held)' : JSON.stringify(buf);
     renderEvents();
+    root.querySelector('[data-sse-next]').disabled = i >= CHUNKS.length;
+  }
+
+  root.querySelector('[data-sse-next]').addEventListener('click', () => {
+    if (i >= CHUNKS.length) return;
+    const chunk = CHUNKS[i];
+    const dispatched = parser.push(chunk.bytes);
+    events.push(...dispatched);
+    i++;
+    hintEl.textContent = `Chunk ${i} of ${CHUNKS.length}: ${chunk.note}`
+      + (dispatched.length ? ` (+${dispatched.length} dispatched)` : ' (0 dispatched)');
+    render();
   });
-  root.querySelector('[data-sse-reconnect]').addEventListener('click', () => {
+  root.querySelector('[data-sse-reset]').addEventListener('click', () => {
     parser = createSseParser();
+    i = 0;
     events = [];
-    renderEvents();
+    hintEl.textContent = 'Five chunks. The first one is cut in the middle of a field name.';
+    render();
   });
+  render();
 })();
 
 /* MODEL:scheduler START */
@@ -1017,9 +1072,10 @@ function runRound(tasks, runTask) {
   const root = document.getElementById('agents');
   if (!root) return;
 
+  const BOX_W = 190, BOX_H = 34;
   const positions = {
-    'fetch-price': [70, 40], 'fetch-inventory': [70, 140],
-    'sanity-check': [280, 190], 'price-check': [280, 90], 'notify': [470, 90],
+    'fetch-price': [20, 30], 'fetch-inventory': [20, 125], 'sanity-check': [20, 220],
+    'price-check': [255, 125], 'notify': [470, 125],
   };
   function buildTasks() {
     return [
@@ -1031,9 +1087,11 @@ function runRound(tasks, runTask) {
     ];
   }
   let tasks = buildTasks();
+  // 'child' marks the parent/child edge (sanity-check belongs to price-check)
+  // rather than a dependsOn edge; it's drawn dashed to tell the two apart.
   const edges = [
-    ['fetch-price', 'price-check'], ['fetch-inventory', 'price-check'],
-    ['sanity-check', 'price-check'], ['price-check', 'notify'],
+    ['fetch-price', 'price-check', 'dep'], ['fetch-inventory', 'price-check', 'dep'],
+    ['sanity-check', 'price-check', 'child'], ['price-check', 'notify', 'dep'],
   ];
 
   function render() {
@@ -1042,13 +1100,14 @@ function runRound(tasks, runTask) {
       const [x, y] = positions[t.id];
       const cls = t.status === 'done' ? 'root' : t.status === 'in_progress' ? 'ab' : '';
       return `<g class="ab ${cls}" transform="translate(${x},${y})">
-        <rect width="150" height="34" rx="4"/>
-        <text x="75" y="21" text-anchor="middle">${t.id} · ${t.status}</text>
+        <rect width="${BOX_W}" height="${BOX_H}" rx="4"/>
+        <text x="${BOX_W / 2}" y="21" text-anchor="middle">${t.id} · ${t.status}</text>
       </g>`;
     }).join('');
-    const lines = edges.map(([from, to]) => {
+    const lines = edges.map(([from, to, kind]) => {
       const [x1, y1] = positions[from]; const [x2, y2] = positions[to];
-      return `<path class="e" d="M${x1 + 150},${y1 + 17} L${x2},${y2 + 17}"/>`;
+      const dash = kind === 'child' ? ' stroke-dasharray="4 3"' : '';
+      return `<path class="e"${dash} d="M${x1 + BOX_W},${y1 + BOX_H / 2} L${x2},${y2 + BOX_H / 2}"/>`;
     }).join('');
     svg.innerHTML = lines + boxes;
   }
@@ -1200,6 +1259,88 @@ function runRound(tasks, runTask) {
   });
   root.querySelector('[data-retry-reset]').addEventListener('click', () => {
     attempt = 1; dead = false; render();
+  });
+  render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('dual-write');
+  if (!root) return;
+  let n = 0, db = [], outbox = [], broker = [];
+
+  const fill = (sel, items) => {
+    const el = root.querySelector(sel);
+    el.innerHTML = '';
+    if (!items.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = '(empty)';
+      el.appendChild(li);
+      return;
+    }
+    for (const it of items) {
+      const li = document.createElement('li');
+      li.textContent = it.label;
+      if (it.cls) li.className = it.cls;
+      el.appendChild(li);
+    }
+  };
+
+  function verdict() {
+    const announced = broker.length;
+    const stored = db.length;
+    const pending = outbox.filter((o) => !o.sent).length;
+    if (!stored) return 'Nothing placed yet.';
+    if (stored === announced) return `Consistent: ${stored} order(s) stored, ${announced} announced.`;
+    if (pending) {
+      return `Not consistent yet — but recoverable. ${pending} outbox row(s) still pending; `
+        + 'the relay will publish them. The crash cost latency, not the event.';
+    }
+    return `Lost: ${stored} order(s) in the database, only ${announced} announced, and nothing `
+      + 'left anywhere that remembers to fix it. This is the dual-write failure.';
+  }
+
+  function render() {
+    fill('[data-dw-db]', db.map((o) => ({ label: `${o.id} · stored` })));
+    fill('[data-dw-outbox]', outbox.map((o) => ({
+      label: `${o.id} · ${o.sent ? 'sent' : 'pending'}`,
+      cls: o.sent ? 'inv' : 'pend',
+    })));
+    fill('[data-dw-broker]', broker.map((e) => ({ label: `${e} · order.placed`, cls: 'fx' })));
+    const v = root.querySelector('[data-dw-verdict]');
+    v.textContent = verdict();
+    v.style.color = verdict().startsWith('Lost') ? 'var(--fail)' : '';
+    root.querySelector('[data-dw-relay]').disabled = !outbox.some((o) => !o.sent);
+  }
+
+  root.querySelector('[data-dw-place]').addEventListener('click', () => {
+    const mode = root.querySelector('input[name="dw-mode"]:checked').value;
+    const crash = root.querySelector('[data-dw-crash]').checked;
+    const id = `order-${++n}`;
+
+    if (mode === 'direct') {
+      db.push({ id });                    // write 1: the database
+      if (crash) { render(); return; }    // process dies here — nobody is ever told
+      broker.push(id);                    // write 2: the broker
+    } else {
+      db.push({ id });                    // both of these are the SAME transaction
+      outbox.push({ id, sent: false });
+      if (crash) { render(); return; }    // dies here too, but the outbox row survives
+      publish();
+    }
+    render();
+  });
+
+  function publish() {
+    for (const row of outbox) {
+      if (!row.sent) { broker.push(row.id); row.sent = true; }
+    }
+  }
+
+  root.querySelector('[data-dw-relay]').addEventListener('click', () => { publish(); render(); });
+  root.querySelector('[data-dw-reset]').addEventListener('click', () => {
+    n = 0; db = []; outbox = []; broker = []; render();
   });
   render();
 })();
