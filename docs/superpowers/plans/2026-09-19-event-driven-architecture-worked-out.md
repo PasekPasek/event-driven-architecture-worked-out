@@ -38,7 +38,7 @@ so `test-model.ts` runs directly with `node test-model.ts`, no build step), zero
 - Create: `favicon.svg`
 - Create: `.gitignore`
 
-- [ ] **Step 1: Create the MIT license**
+- [x] **Step 1: Create the MIT license**
 
 ```text
 MIT License
@@ -66,13 +66,13 @@ SOFTWARE.
 
 Save this as `LICENSE` (no extension).
 
-- [ ] **Step 2: Create `.nojekyll` (empty file, disables GitHub Pages' Jekyll processing)**
+- [x] **Step 2: Create `.nojekyll` (empty file, disables GitHub Pages' Jekyll processing)**
 
 ```bash
 touch .nojekyll
 ```
 
-- [ ] **Step 3: Create `robots.txt`**
+- [x] **Step 3: Create `robots.txt`**
 
 ```text
 User-agent: *
@@ -81,7 +81,7 @@ Allow: /
 Sitemap: https://pasekpasek.github.io/event-driven-architecture-worked-out/sitemap.xml
 ```
 
-- [ ] **Step 4: Create `sitemap.xml`**
+- [x] **Step 4: Create `sitemap.xml`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -95,7 +95,7 @@ Sitemap: https://pasekpasek.github.io/event-driven-architecture-worked-out/sitem
 </urlset>
 ```
 
-- [ ] **Step 5: Create `favicon.svg`**
+- [x] **Step 5: Create `favicon.svg`**
 
 Same shape language as the two sibling pages (a machined dial), recolored so the three pages are
 recognizably a set but distinguishable: swap the "live" accent from amber (`#F0A94C`, event loop) /
@@ -115,7 +115,7 @@ palette as `--c-key`) so it reads as "the third one" at a glance:
 (Three linked nodes — a tiny event graph — rather than the event loop's single dial or auth's likely
 lock/key shape.)
 
-- [ ] **Step 6: Create `.gitignore`**
+- [x] **Step 6: Create `.gitignore`**
 
 ```text
 .DS_Store
@@ -123,7 +123,7 @@ lock/key shape.)
 /tmp-model-*
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add LICENSE .nojekyll robots.txt sitemap.xml favicon.svg .gitignore
@@ -139,7 +139,7 @@ git commit -m "chore: repo scaffolding (license, robots, sitemap, favicon)"
 **Files:**
 - Create: `index.html`
 
-- [ ] **Step 1: Write the `<head>` block**
+- [x] **Step 1: Write the `<head>` block**
 
 ```html
 <!DOCTYPE html>
@@ -193,7 +193,7 @@ git commit -m "chore: repo scaffolding (license, robots, sitemap, favicon)"
 </html>
 ```
 
-- [ ] **Step 2: Fill the `<style>` block — copy the design-token system verbatim from `event-loop-worked-out/index.html` (its `:root` block through `.fname{...}`, roughly lines 45–274 of that file), unchanged except the accent swap below**
+- [x] **Step 2: Fill the `<style>` block — copy the design-token system verbatim from `event-loop-worked-out/index.html` (its `:root` block through `.fname{...}`, roughly lines 45–274 of that file), unchanged except the accent swap below**
 
 Copy every rule from the sibling's `<style>` block. Then change only these two lines (the accent
 color, so this page reads as violet-accented rather than amber-accented, while every other token —
@@ -210,7 +210,7 @@ Leave every other selector — `.demo`, `.pane`, `.rows`, `.map`, `.tl`, `.simgr
 `.lane`, `.truths`, `table.spec`, `.caveat`, `.toc`, the `@media` blocks — exactly as in the sibling.
 These are the components Tasks 7–17 build every sandbox from; do not rename or restructure them here.
 
-- [ ] **Step 3: Write the page skeleton — header, table of contents, ten empty `<section>` shells with numbered headings, footer**
+- [x] **Step 3: Write the page skeleton — header, table of contents, ten empty `<section>` shells with numbered headings, footer**
 
 ```html
 <body>
@@ -280,7 +280,7 @@ are removed by name in Tasks 7–17, each of which replaces its own comment with
 the one place in this plan an empty marker is acceptable, because it is immediately resolved by an
 enumerated, already-scheduled task, not left open-ended.
 
-- [ ] **Step 4: Open the file directly in a browser and confirm the page renders**
+- [x] **Step 4: Open the file directly in a browser and confirm the page renders**
 
 ```bash
 python3 -m http.server 8000 &
@@ -290,7 +290,7 @@ Open `http://localhost:8000/` — expect: dark plate background, serif body text
 paragraph, a table of contents with 10 links, ten empty (but bordered, spaced) sections, footer with
 two working links. Kill the server afterward (`kill %1`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.html
@@ -315,7 +315,7 @@ formula (backoff).
 - Modify: `index.html` (fill `MODEL:backoff` block)
 - Create: `test-model.ts`
 
-- [ ] **Step 1: Write the model into `index.html`, inside the `MODEL:backoff` markers**
+- [x] **Step 1: Write the model into `index.html`, inside the `MODEL:backoff` markers**
 
 ```js
 /* MODEL:backoff START */
@@ -331,7 +331,7 @@ function computeRetryDelayMs(attempt) {
 /* MODEL:backoff END */
 ```
 
-- [ ] **Step 2: Create `test-model.ts` with the extraction helper and the backoff check**
+- [x] **Step 2: Create `test-model.ts` with the extraction helper and the backoff check**
 
 ```ts
 // Checks the page's models against something real: a real HTTP server + real
@@ -383,7 +383,7 @@ function check(label: string, pass: boolean, detail?: string): void {
 console.log(failures ? `\n${failures} failing` : '\nall backoff checks pass');
 ```
 
-- [ ] **Step 3: Run it and confirm it fails for the right reason before the model exists — then confirm it passes**
+- [x] **Step 3: Run it and confirm it fails for the right reason before the model exists — then confirm it passes**
 
 ```bash
 node test-model.ts
@@ -394,7 +394,7 @@ formula for attempts 1-6`, then `all backoff checks pass`. If you see a `MODEL:b
 found` error, re-check the exact marker text in `index.html` matches
 `/* MODEL:backoff START */` / `/* MODEL:backoff END */` byte-for-byte.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html test-model.ts
@@ -407,7 +407,7 @@ git commit -m "feat: backoff model, verified against the real recovery.ts formul
 - Modify: `index.html` (fill `MODEL:sse` block)
 - Modify: `test-model.ts`
 
-- [ ] **Step 1: Write the parser into `index.html`, inside the `MODEL:sse` markers**
+- [x] **Step 1: Write the parser into `index.html`, inside the `MODEL:sse` markers**
 
 This follows the WHATWG HTML "event stream interpretation" algorithm (the same one every browser's
 `EventSource` implements), simplified to the fields this page uses:
@@ -462,7 +462,7 @@ function createSseParser() {
 /* MODEL:sse END */
 ```
 
-- [ ] **Step 2: Add the SSE real-server check to `test-model.ts`**
+- [x] **Step 2: Add the SSE real-server check to `test-model.ts`**
 
 This starts a real `node:http` server that speaks `text/event-stream` — deliberately splitting one
 event across two separate `res.write` calls (a chunk boundary mid-field) to prove the parser handles
@@ -557,7 +557,7 @@ Place this block after the backoff check and before the final `console.log(failu
 move that final summary line to the very end of the file (after all three model sections) in the
 next task.
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it**
 
 ```bash
 node test-model.ts
@@ -568,7 +568,7 @@ pause from the deliberate 20ms `setTimeout` split). If `gotData` doesn't match, 
 is not restoring the trailing partial line (`carry`) between `push()` calls — check that `carry` is
 assigned from `lines.pop()` and reused on the next `push`, not reset to `''`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html test-model.ts
@@ -581,7 +581,7 @@ git commit -m "feat: SSE parser model, verified against a real chunked HTTP serv
 - Modify: `index.html` (fill `MODEL:scheduler` block)
 - Modify: `test-model.ts`
 
-- [ ] **Step 1: Write the model into `index.html`, inside the `MODEL:scheduler` markers**
+- [x] **Step 1: Write the model into `index.html`, inside the `MODEL:scheduler` markers**
 
 This is a simplified, plain-array port of the real DAG logic in `4th-devs`,
 `05_01_agent_graph/src/scheduler/graph.ts` (`findReadyTasks`, `unblockParents`) and `loop.ts`
@@ -652,7 +652,7 @@ function runRound(tasks, runTask) {
 /* MODEL:scheduler END */
 ```
 
-- [ ] **Step 2: Add the scheduler check to `test-model.ts`, using an independently-written oracle**
+- [x] **Step 2: Add the scheduler check to `test-model.ts`, using an independently-written oracle**
 
 The oracle below is deliberately *not* copy-pasted from the block above — it's written from the same
 algorithm description (a fresh re-derivation from `graph.ts`/`loop.ts`), using a `Map` instead of
@@ -759,7 +759,7 @@ async function checkScheduler(): Promise<void> {
 await checkScheduler();
 ```
 
-- [ ] **Step 3: Move the summary line to the end of the file and run everything**
+- [x] **Step 3: Move the summary line to the end of the file and run everything**
 
 ```ts
 console.log(failures ? `\n${failures} failing` : '\nall model checks pass');
@@ -777,7 +777,7 @@ node test-model.ts
 Expected: `PASS` for all backoff, sse and scheduler checks, ending with `all model checks pass` and
 exit code 0 (`echo $?`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html test-model.ts
@@ -789,7 +789,7 @@ git commit -m "feat: DAG scheduler model, verified against an independent oracle
 **Files:**
 - Create: `VERIFICATION.md` (a short, standalone note; folded into the main `README.md` in Task 19 — kept separate here so this phase is independently reviewable)
 
-- [ ] **Step 1: Write it**
+- [x] **Step 1: Write it**
 
 ```markdown
 # What is real and what is a model
@@ -814,7 +814,7 @@ Run the harness:
     node test-model.ts
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add VERIFICATION.md
@@ -837,7 +837,7 @@ a suggestion.
 **Files:**
 - Modify: `index.html` (replace `<section id="truths">`)
 
-- [ ] **Step 1: Replace the placeholder with this structure and content**
+- [x] **Step 1: Replace the placeholder with this structure and content**
 
 Required facts (all must appear):
 1. A producer does not know who, if anyone, consumes an event — no return value, no caller identity.
@@ -874,10 +874,10 @@ Required facts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Reload the page and confirm the numbered-list styling (`.truths`) renders as three
+- [x] **Step 2: Reload the page and confirm the numbered-list styling (`.truths`) renders as three
   bordered, numbered blocks, matching the visual style of the equivalent list in `event-loop-worked-out`**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add index.html
@@ -889,7 +889,7 @@ git commit -m "feat(content): section 01 - three things always true"
 **Files:**
 - Modify: `index.html` (replace `<section id="build-it">`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts / artifacts (all must appear):
 1. Draft 1 — an in-process `EventEmitter`: synchronous, at-most-once, everything lost on crash.
@@ -966,9 +966,9 @@ Required facts / artifacts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Reload and confirm the three `pre.lit` code blocks (Drafts 1-3) and the comparison table render**
+- [x] **Step 2: Reload and confirm the three `pre.lit` code blocks (Drafts 1-3) and the comparison table render**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add index.html
@@ -980,7 +980,7 @@ git commit -m "feat(content): section 02 - if you had to build it"
 **Files:**
 - Modify: `index.html` (replace `<section id="guarantees">`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts, each cited to its official doc (all must appear, with a `.src` line linking the doc):
 1. At-most-once / at-least-once / exactly-once defined precisely (0-or-1 delivery attempts with
@@ -1043,10 +1043,10 @@ Required facts, each cited to its official doc (all must appear, with a `.src` l
 </section>
 ```
 
-- [ ] **Step 2: Click through both linked docs pages to confirm the URLs are current and match the
+- [x] **Step 2: Click through both linked docs pages to confirm the URLs are current and match the
   claims (AWS and Kafka occasionally restructure their docs URLs) — fix any that 404**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add index.html
@@ -1058,7 +1058,7 @@ git commit -m "feat(content): section 03 - delivery guarantees for real"
 **Files:**
 - Modify: `index.html` (replace `<section id="ordering">`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts (all must appear):
 1. "The event happened first" is not the same claim as "a consumer sees it first" — something has to
@@ -1106,7 +1106,7 @@ Required facts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Add the sandbox's driving script, inline right before `</body>`, after the existing
+- [x] **Step 2: Add the sandbox's driving script, inline right before `</body>`, after the existing
   `<script>` block's model markers (this is page-only interactive glue, not one of the three verified
   models — no `MODEL:` markers needed)**
 
@@ -1151,12 +1151,12 @@ Required facts (all must appear):
 </script>
 ```
 
-- [ ] **Step 3: In the browser, click "emit for sku-1" three times in "mixed keys" mode, then "emit for
+- [x] **Step 3: In the browser, click "emit for sku-1" three times in "mixed keys" mode, then "emit for
   sku-2" twice, then back to sku-1 once — confirm partition 0 shows only sku-1 events in order,
   partition 1 shows only sku-2 events in order, and the combined view shows all six in the order
   clicked (demonstrating that combined/topic order is just "arrival order," not a guarantee)**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -1168,7 +1168,7 @@ git commit -m "feat(content): section 04 - ordering and partitioning, with sandb
 **Files:**
 - Modify: `index.html` (replace `<section id="sse">`, wire the `MODEL:sse` parser into a live sandbox)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts (all must appear — this is the explicit "explain what SSE is" content the user asked
 for directly):
@@ -1270,7 +1270,7 @@ data: {"type":"task.completed","id":"fetch-price"}
 </section>
 ```
 
-- [ ] **Step 2: Wire the sandbox — add this script after the `MODEL:sse` block in the final `<script>`
+- [x] **Step 2: Wire the sandbox — add this script after the `MODEL:sse` block in the final `<script>`
   section (it calls `createSseParser`, which is now in scope on the page since the model block runs
   unmodified in the browser too, not only inside `test-model.ts`'s extraction)**
 
@@ -1303,11 +1303,11 @@ data: {"type":"task.completed","id":"fetch-price"}
 </script>
 ```
 
-- [ ] **Step 3: In the browser, click "send" — confirm two events appear (task.started / task.completed,
+- [x] **Step 3: In the browser, click "send" — confirm two events appear (task.started / task.completed,
   ids 1 and 2). Click "disconnect + reconnect" — confirm the panel clears. Click "send" again — confirm
   both events reappear, demonstrating the replay-everything behavior described in the prose**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -1329,7 +1329,7 @@ live capture would have been.
 - Create: `fixtures/build-fixture.mjs`
 - Create: `fixtures/ai-stream-tool-call.json`
 
-- [ ] **Step 1: Write `fixtures/ai-stream-raw.txt`** — exactly this text (quoted verbatim from
+- [x] **Step 1: Write `fixtures/ai-stream-raw.txt`** — exactly this text (quoted verbatim from
   Anthropic's "Streaming messages" documentation, "Streaming request with tool use" section, retrieved
   2026-09-19 from `https://platform.claude.com/docs/en/build-with-claude/streaming`):
 
@@ -1416,7 +1416,7 @@ event: message_stop
 data: {"type":"message_stop"}
 ```
 
-- [ ] **Step 2: Write the build script that turns the raw text into the page's fixture shape**
+- [x] **Step 2: Write the build script that turns the raw text into the page's fixture shape**
 
 ```js
 // fixtures/build-fixture.mjs
@@ -1459,7 +1459,7 @@ writeFileSync(
 console.log(`Wrote fixtures/ai-stream-tool-call.json with ${chunks.length} chunks`);
 ```
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it**
 
 ```bash
 node fixtures/build-fixture.mjs
@@ -1470,7 +1470,7 @@ with `message_start` and ending with `message_stop`, including one `content_bloc
 `content_block.type` is `"tool_use"` (at index 1) and six `input_json_delta` chunks whose
 `partial_json` fragments concatenate to `{"location": "San Francisco, CA"}`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add fixtures/ai-stream-raw.txt fixtures/build-fixture.mjs fixtures/ai-stream-tool-call.json
@@ -1482,7 +1482,7 @@ git commit -m "feat: build the AI streaming fixture from Anthropic's published d
 **Files:**
 - Modify: `index.html` (replace `<section id="ai-streaming">`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts (all must appear):
 1. The realization: "streaming a chat response" is section 5's exact mechanism (`text/event-stream`,
@@ -1546,7 +1546,7 @@ Required facts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Wire the stepper — fetches the fixture and steps through it**
+- [x] **Step 2: Wire the stepper — fetches the fixture and steps through it**
 
 ```html
 <script>
@@ -1598,7 +1598,7 @@ Required facts (all must appear):
 </script>
 ```
 
-- [ ] **Step 3: Serve over HTTP (the `fetch` for the fixture needs a server, not `file://`) and step
+- [x] **Step 3: Serve over HTTP (the `fetch` for the fixture needs a server, not `file://`) and step
   through every chunk, confirming: the tool-input panel shows a growing, syntactically-incomplete JSON
   string until the block closes, then stops changing; the text panel accumulates word by word for the
   text block(s)**
@@ -1607,7 +1607,7 @@ Required facts (all must appear):
 python3 -m http.server 8000
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -1619,7 +1619,7 @@ git commit -m "feat(content): section 06 - AI streaming as an SSE application, w
 **Files:**
 - Modify: `index.html` (replace `<section id="agents">`, wire `MODEL:scheduler` into a live sandbox)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts (all must appear):
 1. An agent loop (plan → act → observe → replan) is a consumer reacting to events: its own tool
@@ -1674,7 +1674,7 @@ Required facts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Wire the sandbox — reuses `findReadyTasks`/`runRound` from `MODEL:scheduler` directly
+- [x] **Step 2: Wire the sandbox — reuses `findReadyTasks`/`runRound` from `MODEL:scheduler` directly
   (no reimplementation), rendering the same fixture graph as an SVG node map using the existing
   `.map` CSS component**
 
@@ -1736,12 +1736,12 @@ Required facts (all must appear):
 </script>
 ```
 
-- [ ] **Step 3: In the browser, click "run next round" repeatedly — confirm round 1 completes
+- [x] **Step 3: In the browser, click "run next round" repeatedly — confirm round 1 completes
   fetch-price and fetch-inventory (sanity-check has no deps either, so it also completes round 1);
   round 2 completes price-check (now unblocked); round 3 completes notify; round 4 shows the "no
   ready tasks" message**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -1753,7 +1753,7 @@ git commit -m "feat(content): section 07 - agents as event-driven systems, live 
 **Files:**
 - Modify: `index.html` (replace `<section id="event-sourcing">`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts (all must appear):
 1. State is not stored directly; it's derived by folding over an append-only event log — the
@@ -1803,7 +1803,7 @@ Required facts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Wire the scrubber**
+- [x] **Step 2: Wire the scrubber**
 
 ```html
 <script>
@@ -1854,12 +1854,12 @@ Required facts (all must appear):
 </script>
 ```
 
-- [ ] **Step 3: Drag the slider through 0 → 7, confirming the state panel updates live: `fetch-price`
+- [x] **Step 3: Drag the slider through 0 → 7, confirming the state panel updates live: `fetch-price`
   moves `todo` → `in_progress` → `done`; `notify` moves `todo` → `in_progress` → `blocked` (with a
   `reason`) → `done`, and the reason disappears once the final `completed` event overwrites the
   status but not before**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -1871,7 +1871,7 @@ git commit -m "feat(content): section 08 - event sourcing and agent state, with 
 **Files:**
 - Modify: `index.html` (replace `<section id="failure">`, wire `MODEL:backoff`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required facts (all must appear):
 1. Once at-least-once delivery is in play, a redelivered event is not a bug — the consumer must be
@@ -1922,7 +1922,7 @@ Required facts (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Wire the sandbox using `computeRetryDelayMs` and `MAX_AUTO_RETRY_ATTEMPTS` from
+- [x] **Step 2: Wire the sandbox using `computeRetryDelayMs` and `MAX_AUTO_RETRY_ATTEMPTS` from
   `MODEL:backoff` directly**
 
 ```html
@@ -1966,11 +1966,11 @@ Required facts (all must appear):
 </script>
 ```
 
-- [ ] **Step 3: Click "attempt fails again" four times — confirm delays of +1500ms, +3000ms, +6000ms
+- [x] **Step 3: Click "attempt fails again" four times — confirm delays of +1500ms, +3000ms, +6000ms
   appear between attempts 1→2, 2→3, 3→4, and the fourth click (past `MAX_AUTO_RETRY_ATTEMPTS = 3`)
   shows the dead-lettered box and disables the button**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -1982,7 +1982,7 @@ git commit -m "feat(content): section 09 - failure, retries, poison messages, wi
 **Files:**
 - Modify: `index.html` (replace `<section id="rules">`)
 
-- [ ] **Step 1: Replace the placeholder**
+- [x] **Step 1: Replace the placeholder**
 
 Required content (all must appear):
 1. A numbered rules list distilling §01–09 (aim for 7-9 rules, mirroring the sibling page's "whole
@@ -2021,10 +2021,10 @@ Required content (all must appear):
 </section>
 ```
 
-- [ ] **Step 2: Reload the full page top to bottom, click every button in every sandbox at least once,
+- [x] **Step 2: Reload the full page top to bottom, click every button in every sandbox at least once,
   and confirm no console errors (open browser devtools console while doing this)**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add index.html
@@ -2041,7 +2041,7 @@ git commit -m "feat(content): section 10 - rules and scope"
 - Create: `llms.txt`
 - Create: `llms-full.txt`
 
-- [ ] **Step 1: Write `llms.txt`, following the exact structure of the sibling repo's file (a summary
+- [x] **Step 1: Write `llms.txt`, following the exact structure of the sibling repo's file (a summary
   blockquote, a bulleted key-points list, a Page link, a Source material list, a Caveat, an Optional
   repo link)**
 
@@ -2102,7 +2102,7 @@ SNS, EventBridge) are cited from vendor documentation, not independently reprodu
 - [Source repository](https://github.com/PasekPasek/event-driven-architecture-worked-out): one HTML file, no build step, MIT.
 ```
 
-- [ ] **Step 2: Write `llms-full.txt` — the plain-text version of every section's content (no HTML,
+- [x] **Step 2: Write `llms-full.txt` — the plain-text version of every section's content (no HTML,
   no sandbox markup), following the sibling's numbered-section format. Populate each `## 0N. <title>`
   block by copying the prose (not the markup) already written in Tasks 7-17, stripped of tags, in
   the same voice as the sibling's `llms-full.txt`. Include a header block matching the sibling's:**
@@ -2124,7 +2124,7 @@ event-loop-worked-out/llms-full.txt is the plain-text twin of its own index.html
 [...restate the VERIFICATION.md content from Task 6 here, in the sibling's voice...]
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add llms.txt llms-full.txt
@@ -2136,7 +2136,7 @@ git commit -m "docs: llms.txt and llms-full.txt"
 **Files:**
 - Create: `README.md`
 
-- [ ] **Step 1: Write it, following the sibling's exact section order (title, one-line description,
+- [x] **Step 1: Write it, following the sibling's exact section order (title, one-line description,
   Live link, "What's in it" bulleted list mirroring the ten sections, "What is real and what is a
   model" folded in from `VERIFICATION.md`, Scope, Running it, Credits)**
 
@@ -2207,7 +2207,7 @@ design. The SSE server shape, DAG scheduler, backoff formula and heartbeat loop 
 repository.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add README.md
@@ -2220,7 +2220,7 @@ git commit -m "docs: README"
 - Create: `og.svg` (source)
 - Create: `og.png` (rendered, 1200×630)
 
-- [ ] **Step 1: Write the source SVG at the exact OG canvas size, reusing the page's own palette**
+- [x] **Step 1: Write the source SVG at the exact OG canvas size, reusing the page's own palette**
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
@@ -2269,7 +2269,7 @@ Fix the malformed third `<circle>` (`cy" ="430` is a typo introduced above — w
 </svg>
 ```
 
-- [ ] **Step 2: Render it to PNG at exactly 1200×630**
+- [x] **Step 2: Render it to PNG at exactly 1200×630**
 
 ```bash
 # Requires librsvg (rsvg-convert). Install if missing: sudo apt-get install librsvg2-bin
@@ -2280,7 +2280,7 @@ If `rsvg-convert` isn't available and can't be installed, use any locally availa
 (e.g. Inkscape's `--export-type=png`, or a headless-browser screenshot of the SVG at 1200×630) — the
 acceptance check is simply `file og.png` reporting `PNG image data, 1200 x 630`.
 
-- [ ] **Step 3: Verify dimensions**
+- [x] **Step 3: Verify dimensions**
 
 ```bash
 file og.png
@@ -2288,7 +2288,7 @@ file og.png
 
 Expected output contains `1200 x 630`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add og.svg og.png
@@ -2299,7 +2299,7 @@ git commit -m "feat: social preview image"
 
 **Files:** none created; verification only.
 
-- [ ] **Step 1: Run the full verification harness one more time from a clean checkout state**
+- [x] **Step 1: Run the full verification harness one more time from a clean checkout state**
 
 ```bash
 node test-model.ts
@@ -2308,7 +2308,7 @@ echo "exit code: $?"
 
 Expected: every check `PASS`, `all model checks pass`, exit code `0`.
 
-- [ ] **Step 2: Full manual walkthrough — serve locally, open in a browser, and for every one of the
+- [x] **Step 2: Full manual walkthrough — serve locally, open in a browser, and for every one of the
   seven sandboxes (ordering §04, SSE §05, AI streaming §06, agents §07, event log §08, retries §09,
   plus the dependency-map-equivalent content in §01/02) click every control at least once and confirm
   no console errors**
@@ -2317,7 +2317,7 @@ Expected: every check `PASS`, `all model checks pass`, exit code `0`.
 python3 -m http.server 8000
 ```
 
-- [ ] **Step 3: Check `prefers-reduced-motion` and mobile width render correctly (the copied CSS
+- [x] **Step 3: Check `prefers-reduced-motion` and mobile width render correctly (the copied CSS
   already has both media queries — confirm they still apply, since no rule that defines them should
   have been touched)**
 
@@ -2325,14 +2325,14 @@ Resize the browser to ~375px width; confirm no horizontal scroll on the page its
 wide SVGs/tables may scroll internally via `.mapwrap`/`.tlwrap`/`.tablewrap` — that's expected and
 matches the sibling pages).
 
-- [ ] **Step 4: Create the GitHub repository and push**
+- [x] **Step 4: Create the GitHub repository and push**
 
 ```bash
 gh repo create PasekPasek/event-driven-architecture-worked-out --public --source=. --remote=origin --description "Interactive explainer for event-driven architecture — queues, Server-Sent Events, AI model streaming and multi-agent orchestration, in TypeScript. Verified against real running code where possible."
 git push -u origin main
 ```
 
-- [ ] **Step 5: Enable GitHub Pages, serving from `main` branch root**
+- [x] **Step 5: Enable GitHub Pages, serving from `main` branch root**
 
 ```bash
 gh api repos/PasekPasek/event-driven-architecture-worked-out/pages -X POST -f "source[branch]=main" -f "source[path]=/"
@@ -2341,7 +2341,7 @@ gh api repos/PasekPasek/event-driven-architecture-worked-out/pages -X POST -f "s
 If that returns an error because Pages is already configured differently, set it via the repo
 Settings → Pages UI instead: Source = "Deploy from a branch", Branch = `main`, folder = `/ (root)`.
 
-- [ ] **Step 6: Wait for the Pages build and confirm the live URL renders**
+- [x] **Step 6: Wait for the Pages build and confirm the live URL renders**
 
 ```bash
 sleep 60
@@ -2351,5 +2351,5 @@ curl -sI https://pasekpasek.github.io/event-driven-architecture-worked-out/ | he
 Expected: `HTTP/2 200`. If `404`, re-check the Pages source setting from Step 5 and that `.nojekyll`
 was committed (Task 1).
 
-- [ ] **Step 7: No commit needed for this task (verification + deploy only); if any fix was made
+- [x] **Step 7: No commit needed for this task (verification + deploy only); if any fix was made
   during QA, commit it with its own descriptive message before publishing**
