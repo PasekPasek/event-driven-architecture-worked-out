@@ -1,11 +1,11 @@
 # Event-Driven Architecture, Worked Out
 
 > An interactive, single-page explainer for event-driven architecture: what a broker actually
-> guarantees (Kafka, SQS, SNS, EventBridge), why Server-Sent Events is a transport rather than an
-> architecture, and how AI model streaming and multi-agent orchestration both ride on the same
-> mechanism. The SSE parser
-> and DAG scheduler shown are verified against real running code by `test-model.ts`; broker guarantees
-> are cited from official docs. Author: Paweł Pasek.
+> guarantees (Kafka, SQS, SNS, EventBridge), how ordering trades against throughput, what belongs in
+> an event and what breaks when you change it, how multi-agent orchestration is the same mechanism
+> one level up, and what all of it costs you. The DAG scheduler, backoff formula, schema-evolution
+> matrix and idempotency models are verified against real running code by `test-model.ts`; broker
+> guarantees are cited from official docs. Author: Paweł Pasek.
 
 Key points made on this page:
 
@@ -25,22 +25,18 @@ Key points made on this page:
   them silently, and a genuinely breaking change means publishing a new event type beside the old one
   — fact 1 means the producer cannot enumerate who to warn. Whether an addition is safe is a fact
   about the consumer's content model (`additionalProperties: true` vs `false`), not about the event.
-- **SSE is a transport, not an architecture** — it *breaks* fact 1: the server holds one identified
-  client's connection and writes straight down it. The event-driven half is the in-process bus
-  (emit/subscribe/bounded replay buffer); SSE is the wire that carries its output across a process
-  boundary to a browser, and `subscribe(event => res.write(...))` is the adapter between them. One
-  HTTP response kept open, `Content-Type: text/event-stream`, wire fields
-  `data:`/`event:`/`id:`/`retry:`, one direction only; `EventSource` auto-reconnects using
-  `Last-Event-ID`.
-- **AI streaming** — the same SSE mechanism with a documented schema:
-  `message_start` → per-block `content_block_start/delta/stop` → `message_delta` → `message_stop`.
-  Tool-call input arrives as JSON fragments (`input_json_delta`/`partial_json`) safe to parse only
-  once the block closes.
+- **The in-process bus, and its edge** — §02 ends with the real event bus 4th-devs runs on
+  (emit/subscribe/bounded replay buffer), which is Drafts 1 and 2 shipped and nothing more. What it
+  cannot do is leave the process. Every event-driven system grows an edge where events stop being
+  broadcast to whoever cares and start being written down a socket to one identified reader, and
+  `subscribe(event => res.write(event))` is the adapter. That right-hand side — Server-Sent Events,
+  the wire format, reconnection, model token streaming — is a transport rather than an architecture
+  and lives on a separate page, https://pasekpasek.github.io/streaming-worked-out/.
 - **Agents** — a multi-agent system is a DAG of tasks reacting to `done` events; the ready set
   (dependencies all satisfied) is recomputed every round, mirroring an event loop's phases one level up.
   Nobody draws the DAG: agents build it at runtime by calling `delegate_task`, whose
-  `dependsOnTaskIds` argument becomes the edge — the same tool call that arrived as `partial_json`
-  fragments over SSE. That tool call is a *command* (imperative, refusable, awaited); what the
+  `dependsOnTaskIds` argument becomes the edge — arriving as streamed JSON fragments that are
+  parseable only once the block closes. That tool call is a *command* (imperative, refusable, awaited); what the
   scheduler emits afterwards (`task.completed`) is an *event* (past tense, addressed to nobody).
 - **Event sourcing** — state is recovered by folding an append-only event log, not stored directly;
   crash recovery and an audit trail come for free, until the log needs compaction.
@@ -78,21 +74,18 @@ Key points made on this page:
 - [AWS SQS developer guide — dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
 - [AWS SNS developer guide — FIFO topics](https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html)
 - [AWS EventBridge user guide — dead-letter queues for undelivered events](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html)
-- [Anthropic Messages API — streaming](https://platform.claude.com/docs/en/build-with-claude/streaming): the "Streaming request with tool use" response quoted verbatim as this page's §07 fixture.
-- [4th-devs](https://github.com/i-am-alice/4th-devs), `05_01_agent_graph/src/{events.ts,server.ts,scheduler/*,tools/task/delegate.ts}` and `03_02_events/docs/{heartbeat.md,schemas.md}`: the real event bus, SSE server, DAG scheduler, the `delegate_task` tool that builds the graph, the backoff formula and the heartbeat loop this page is built from.
-- WHATWG HTML — the `text/event-stream` parsing algorithm `EventSource` implements.
+- [4th-devs](https://github.com/i-am-alice/4th-devs), `05_01_agent_graph/src/{events.ts,scheduler/*,tools/task/delegate.ts}` and `03_02_events/docs/{heartbeat.md,schemas.md}`: the real event bus, DAG scheduler, the `delegate_task` tool that builds the graph, the backoff formula and the heartbeat loop this page is built from.
 
 ## Caveat
 
-Five of the page's models are checked by `test-model.ts` (21 checks): the SSE parser against a real
-HTTP server, the DAG scheduler against an independently-written oracle port (including the blocked
-child case), the backoff formula against its source, the §05 schema-evolution matrix verdict by
-verdict, and the §10 idempotency models. Broker delivery/ordering guarantees (Kafka, SQS, SNS,
-EventBridge), Confluent's compatibility definitions and Fowler's taxonomy are cited from primary
-sources, not independently reproduced locally. The §07
-streaming fixture is quoted from Anthropic's own published documentation, not captured from a live
-API call.
+Four of the page's models are checked by `test-model.ts` (18 checks): the DAG scheduler against an
+independently-written oracle port (including the blocked-child case), the backoff formula against
+its source, the §05 schema-evolution matrix verdict by verdict, and the §08 idempotency models.
+Broker delivery/ordering guarantees (Kafka, SQS, SNS, EventBridge), Confluent's compatibility
+definitions and Fowler's taxonomy are cited from primary sources, not independently reproduced
+locally.
 
 ## Optional
 
 - [Source repository](https://github.com/PasekPasek/event-driven-architecture-worked-out): one HTML file, no build step, MIT.
+- [streaming-worked-out](https://pasekpasek.github.io/streaming-worked-out/): the sibling page for the transport half — SSE, the wire format, reconnection, and model token streaming.

@@ -11,7 +11,9 @@ of the same mechanism.
 - **Three things always true.** A producer doesn't know its consumers; an event is a fact, not a
   request; coupling moves from runtime calls to schema shape.
 - **If you had to build it.** Four drafts — an in-process EventEmitter, a durable log, a
-  self-tracking reader, acknowledge-or-redeliver — arriving at the shape every real broker takes.
+  self-tracking reader, acknowledge-or-redeliver — arriving at the shape every real broker takes,
+  then the same first two drafts as a real shipped event bus, and the edge where an in-process bus
+  stops being enough.
 - **Delivery guarantees, for real.** What Kafka, SQS, SNS and EventBridge actually commit to, cited
   from their own docs.
 - **Ordering, partitioning and parallelism.** Why "happened first" isn't "seen first," why a
@@ -23,13 +25,6 @@ of the same mechanism.
   rename or retype a field and watch which of three consumers you don't control breaks — including
   the type change that only one of them notices while the other two keep running and produce a
   wrong number.
-- **What SSE actually is, and what it isn't.** SSE is a transport, not an architecture — it breaks
-  the "a producer doesn't know its consumers" rule on purpose. The section shows the in-process event
-  bus that *is* event-driven, then the wire that carries it out to a browser, with
-  `subscribe(event => res.write(...))` as the seam — plus a live sandbox running the exact parser
-  this repo's `test-model.ts` verifies against a real chunked HTTP server.
-- **AI model streaming as an SSE application.** A stepper over a real Anthropic streaming tool-call
-  turn, watching tool arguments accumulate as partial JSON until the block closes.
 - **Agents as event-driven systems.** A live DAG scheduler sandbox — the same `findReadyTasks`/
   `runRound` code `test-model.ts` checks against an independent oracle port of a real open-source
   agent scheduler.
@@ -49,10 +44,8 @@ of the same mechanism.
 
 ## What is real and what is a model
 
-Five of the page's models are backed by running code, checked by `test-model.ts` (21 checks):
+Four of the page's models are backed by running code, checked by `test-model.ts` (18 checks):
 
-- **The SSE parser** — against a real `node:http` server, including an event deliberately split
-  across two TCP-level writes, over a real `fetch` + `ReadableStream` client.
 - **The DAG scheduler** (ready-set computation, parent-unblocking, and the case where a child comes
   back `blocked` and still has to unblock its parent) — against an independently-written oracle port
   of the real algorithm in [4th-devs](https://github.com/i-am-alice/4th-devs)
@@ -73,17 +66,21 @@ node test-model.ts
 
 Broker delivery/ordering guarantees (Kafka, SQS, SNS, EventBridge), the schema-compatibility
 vocabulary (Confluent) and the event-shape taxonomy (Fowler) are **not** run locally — they're
-cited and quoted from primary sources. The §07 streaming fixture is quoted verbatim from
-Anthropic's own published [streaming documentation](https://platform.claude.com/docs/en/build-with-claude/streaming),
-not captured from a live API call; `fixtures/build-fixture.mjs` rebuilds it from
-`fixtures/ai-stream-raw.txt`.
+cited and quoted from primary sources.
 
 ## Scope
 
-What a JS/TS backend developer needs to reason about queues, SSE and agent orchestration. The
-outbox and change-data-capture get a section of their own (§11), and §12 is the argument against
-doing any of this when you don't need it. Sagas and end-to-end exactly-once across heterogeneous
-systems are named and explained in §13 rather than built, since each is a page of its own.
+What a JS/TS backend developer needs to reason about queues, event schemas and agent
+orchestration. The outbox and change-data-capture get a section of their own (§09), and §10 is the
+argument against doing any of this when you don't need it.
+
+Server-Sent Events used to be two sections here and has been pulled out into
+[streaming-worked-out](https://github.com/PasekPasek/streaming-worked-out). SSE is a transport, not
+an architecture, and two sections of HTTP mechanics taught the wrong lesson about what event-driven
+means. What stays is the part that genuinely is event-driven: the in-process bus in §02, and the
+`subscribe(event => res.write(event))` seam that names the edge between the two pages. Sagas and
+end-to-end exactly-once are named and explained in §11 rather than built, since each is a page of
+its own.
 
 ## Running it
 
@@ -97,8 +94,10 @@ python3 -m http.server 8000   # then open http://localhost:8000
 ## Credits
 
 Built by [Paweł Pasek](https://github.com/PasekPasek). Companion to
-[event-loop-worked-out](https://github.com/PasekPasek/event-loop-worked-out) and
-[auth-worked-out](https://github.com/PasekPasek/auth-worked-out), which use the same workshop-plate
-design. The SSE server shape, DAG scheduler, backoff formula and heartbeat loop are grounded in
+[event-loop-worked-out](https://github.com/PasekPasek/event-loop-worked-out),
+[auth-worked-out](https://github.com/PasekPasek/auth-worked-out) and
+[streaming-worked-out](https://github.com/PasekPasek/streaming-worked-out), which use the same
+workshop-plate design. The in-process event bus, DAG scheduler, backoff formula and heartbeat loop
+are grounded in
 [4th-devs](https://github.com/i-am-alice/4th-devs), an open-source agent-orchestration course
 repository.

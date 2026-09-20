@@ -2,12 +2,12 @@
 
 Source: https://pasekpasek.github.io/event-driven-architecture-worked-out/
 Author: Paweł Pasek
-Verified against: a real node:http server (SSE parsing), an independent oracle port of 4th-devs'
-scheduler (DAG readiness), the literal recovery.ts formula (backoff). Broker guarantees cited from
-vendor docs.
+Verified against: an independent oracle port of 4th-devs' scheduler (DAG readiness), the literal
+recovery.ts formula (backoff), and executed verdict matrices for the schema-evolution and
+idempotency models. Broker guarantees cited from vendor docs.
 
 A producer publishes a fact. Something, eventually, reacts to it. Everything else — brokers,
-Server-Sent Events, streaming model output, multi-agent orchestration — is a variation on that one
+partitions, retries, outboxes, multi-agent orchestration — is a variation on that one
 relationship. This is the plain-text version of the page, without the sandboxes.
 
 ## 01. Three things always true
@@ -24,7 +24,7 @@ makes something "event-driven" rather than just "asynchronous."
 2. An event describes a fact that has already happened — price.changed, not "change the price". A
    consumer that fails to process it does not un-happen it. This is why retrying a failed consumer is
    safe in a way retrying a failed RPC often isn't: the fact is still true, and processing it again
-   should converge to the same result (see idempotency, §10).
+   should converge to the same result (see idempotency, §08).
 3. Coupling doesn't disappear, it moves: from "who do I call" (a function reference, a service URL)
    to "what shape do I emit, what shape do I expect to read." A schema change is now the thing that
    breaks consumers, not a moved endpoint.
@@ -32,13 +32,6 @@ makes something "event-driven" rather than just "asynchronous."
 Most of what follows is one of these three facts wearing a costume: a Kafka partition is fact 1 with
 a specific answer to "how many consumers, in what order"; an AI agent reacting to another agent's
 completion is fact 2, with the agent as both producer and consumer.
-
-One section is deliberately not. §06 is about Server-Sent Events, and SSE breaks fact 1: the server
-holds one specific client's connection and writes straight down it, knowing exactly who is on the
-other end. That is the opposite of a producer not knowing its consumers — which is precisely why it
-is worth a section. Every event-driven system eventually has an edge where events stop being
-broadcast to whoever cares and start being written to one identified reader. SSE is what that edge
-looks like.
 
 The page opens with a clickable dependency map: the three facts across the top, every later section
 hanging off the one it derives from.
@@ -68,7 +61,46 @@ drafts, each fixing the last one's problem, arrive at the shape every real broke
 Each draft fixes the previous one's gap: 1 reacts at all but can't survive a crash; 2 survives a
 crash but can't reach a consumer that wasn't listening; 3 resumes after a restart but can't tell
 "processed" from "crashed mid-process"; 4 redelivers what wasn't acknowledged but can't guarantee a
-redelivery isn't processed twice (§10: idempotency).
+redelivery isn't processed twice (§08: idempotency).
+
+What Drafts 1 and 2 look like shipped. The four drafts are deliberately toys; here is the whole event
+bus 4th-devs actually runs its agent system on — a sequence counter, a set of listeners, and a
+bounded buffer of everything already emitted:
+
+    let _seq = 0
+    const listeners = new Set<Listener>()
+    const buffer: AgentEvent[] = []
+
+    export const emit = (type: string, data = {}): void => {
+      const event = { seq: ++_seq, type, time: new Date().toISOString(), data }
+      buffer.push(event)
+      if (buffer.length > MAX_BUFFER) buffer.shift()
+      for (const listener of listeners) listener(event)
+    }
+
+    export const subscribe = (listener: Listener) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    }
+
+    export const replay = (): readonly AgentEvent[] => buffer
+
+Source: https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/events.ts
+
+That is Draft 1 and Draft 2 in about forty lines and nothing more. emit doesn't know or care who is
+listening — fact 1, in one for loop. The bounded buffer plus replay() is a miniature durable log: a
+listener that attaches late is still handed everything that already happened. It never reaches Draft
+3 (nothing tracks a per-consumer position) and never reaches Draft 4 (nothing acknowledges anything).
+For coordinating agents inside one process (§06) that is the correct amount of machinery.
+
+The edge, where this stops being enough. What the bus cannot do is leave the process. The moment
+those events have to reach a dashboard in a browser, the problem changes shape: one specific reader,
+across a process boundary, over a protocol. Every event-driven system grows that edge, where events
+stop being broadcast to whoever cares and start being written down a socket to one identified reader,
+and the adapter is one line: subscribe(event => res.write(event)). The left-hand side is this page.
+The right-hand side — Server-Sent Events, the wire format, reconnection, and how a model's tokens
+reach a screen — is a transport rather than an architecture and has its own page:
+https://pasekpasek.github.io/streaming-worked-out/
 
 ## 03. Delivery guarantees, for real
 
@@ -145,7 +177,7 @@ Three shapes, in Martin Fowler's terminology
 - Event-carried state transfer — the event carries the fields consumers need. No callback; an
   offline consumer can catch up without talking to the producer. In exchange every field is a
   published promise. This is the default worth reaching for.
-- Event sourcing — every change kept forever, state is the fold over the log (§09). The log is the
+- Event sourcing — every change kept forever, state is the fold over the log (§07). The log is the
   database, with everything that implies.
 
 Schema evolution, with Confluent Schema Registry's vocabulary
@@ -171,78 +203,7 @@ validator rejects, and the other two keep running and produce "049.99" by string
 silent failure. Publishing a v2 alongside v1: nobody breaks. The full 5 × 3 matrix is asserted by
 test-model.ts.
 
-## 06. What SSE actually is, and what it isn't
-
-Server-Sent Events is not event-driven architecture. It is a transport — one connection, one
-identified reader, no broker, no fan-out, no durability. Its place in this page is the seam: it is
-where an event-driven system stops talking to itself and starts writing to somebody.
-
-First, the part that really is event-driven. Inside a process, fact 1 is cheap to satisfy. The whole
-event bus 4th-devs runs its agent system on (05_01_agent_graph/src/events.ts) is a sequence counter,
-a Set of listeners and a bounded buffer: `emit` pushes the event into the buffer and calls every
-listener without knowing or caring who they are; `subscribe` adds one and hands back an unsubscribe;
-`replay()` returns the buffer so a listener that attaches late still gets everything that already
-happened. That is §02's Draft 1 and Draft 2 in about forty lines, and it never leaves the process.
-
-Then, the wire. The events have to reach a dashboard in a browser: one specific reader, across a
-process boundary, over HTTP. That is SSE — one HTTP response that never ends. No upgrade handshake, no new protocol — just
-Content-Type: text/event-stream on an ordinary response the server keeps writing to, and a client
-that knows how to read it as a sequence of events instead of one blob. One direction only: server to
-client. A client that wants to talk back makes a separate, ordinary HTTP request.
-
-The body is lines of `field: value`. A blank line means "dispatch what's buffered so far":
-
-    id: 42
-    event: task.completed
-    data: {"taskId":"write-intro","actor":"writer"}
-
-    data: a plain message with no id or type — dispatched as "message"
-
-- data: — the payload. Multiple data: lines before a blank line are joined with newlines into one event.
-- event: — the event type a client can filter on with addEventListener(type, ...); omitted, it
-  dispatches as the generic "message" event.
-- id: — the reconnect checkpoint. The browser remembers the last one it saw and resends it as a
-  Last-Event-ID request header if the connection drops and it reconnects.
-- retry: — how many milliseconds to wait before that automatic reconnect.
-
-A minimal SSE server is a handful of lines, quoted unmodified from 4th-devs
-(05_01_agent_graph/src/server.ts, sseHandler): write the text/event-stream headers, flush them, write
-every buffered past event as `data: ...\n\n`, then subscribe and write each new event the same way.
-
-That adapter is the whole trick, and it is why "is SSE event-driven?" is the wrong question. The bus
-is event-driven; the socket is not; `subscribe(event => res.write(...))` is the bridge between them.
-Swap the right-hand side for a Kafka producer and the left-hand side does not change — which is what
-fact 3 predicted: the coupling that survives is the shape of the event, not who reads it.
-
-Notice it replays every buffered past event on every new connection, unconditionally — it never reads
-a Last-Event-ID header at all. That's a legitimate, simpler design for a small bounded buffer: the
-client re-renders from scratch and de-duplicates by id, so exact resumption doesn't need to be the
-server's job. The client side is equally small: `const es = new EventSource("/events");` plus an
-onmessage handler.
-
-## 07. AI model streaming as an SSE application
-
-"The model streams its response" is section 5, with a schema. Set stream: true on an Anthropic
-Messages API call and the response is exactly a text/event-stream, readable by the same
-EventSource-shaped logic — only now the event types and payloads are documented, not ad hoc.
-
-One turn is a fixed sequence: message_start (the message shell, with an empty content array), then
-per content block content_block_start → repeated content_block_delta → content_block_stop, then
-message_delta (carrying the final stop_reason) and message_stop. A ping event may appear between
-deltas purely as a keep-alive, with no content of its own — the same role as the `: connected` comment
-line a raw SSE server can send.
-
-A tool call is a content block whose content_block_start has "type": "tool_use" and a partial,
-growing set of arguments: each content_block_delta for that block carries an input_json_delta with a
-partial_json string fragment, not a complete value. The fragments must be concatenated and are only
-guaranteed parseable once content_block_stop closes the block — the exact same "buffer until the
-boundary" rule as an SSE data: field in §06, one level up the stack.
-
-The page's stepper walks a real tool-use turn quoted verbatim from Anthropic's own streaming
-documentation, showing the tool input accumulating as an incomplete JSON string
-({"location": → "San → Francisc → o, → CA"}) until the block closes and it parses.
-
-## 08. Agents as event-driven systems
+## 06. Agents as event-driven systems
 
 An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events: its own tool
 result, another agent's completion, a human answering a question it posed. Wire several agents
@@ -260,16 +221,18 @@ is the agent-world analogue of the event loop's phases:
 6. Emit heartbeat.finished; persist a snapshot of the round.
 
 Where the graph comes from: nobody draws it. It is built at runtime by agents calling a tool, and
-that tool call is the one from §07 — the arguments that arrived as partial_json fragments and only
-became parseable when the content block closed. The tool is delegate_task
+that tool call arrives as streamed JSON fragments, parseable only once the block closes. The tool
+is delegate_task
 (https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/tools/task/delegate.ts),
 whose dependsOnTaskIds parameter is described as "Task ids that must finish before this task can
 run", and whose handler contains the single line that creates the edge:
 
     status: dependsOnTaskIds.length > 0 ? 'waiting' : 'todo',
 
-So the chain runs end to end: a model emits input_json_delta fragments over SSE (§07); they
-concatenate into the arguments to delegate_task; the handler writes a task whose dependsOn is the
+So the chain runs end to end: a model decides to delegate and streams out the arguments as JSON
+fragments (how that arrives is a page of its own,
+https://pasekpasek.github.io/streaming-worked-out/); they concatenate into the arguments to
+delegate_task; the handler writes a task whose dependsOn is the
 edge; the scheduler walks the graph the model just drew. The ready set is not a diagram — it is
 whatever the agents have talked themselves into so far.
 
@@ -287,7 +250,7 @@ depends on both and also waits on its child sanity-check; notify depends on pric
 verification includes the case where sanity-check comes back blocked: a blocked child counts as
 finished for its parent, so price-check and notify still complete.
 
-## 09. Event sourcing and agent state
+## 07. Event sourcing and agent state
 
 Nothing so far has stored "the current state" anywhere. It's derived: replay the event log from
 empty, and you have it. That's not an implementation detail — it's a deliberate trade of storage
@@ -305,9 +268,9 @@ in advance.
 It doesn't stay free. A log that only ever grows eventually costs more to replay than a snapshot
 would cost to load — which is exactly why Kafka ships log compaction (keeping only the latest record
 per key) as a first-class feature, not an afterthought. Snapshotting is named here, not built: out of
-scope for this page (§13).
+scope for this page (§11).
 
-## 10. Failure, retries, poison messages
+## 08. Failure, retries, poison messages
 
 Every "at-least-once" system in §03 can redeliver. That's not a bug the consumer waits out — it's a
 contract the consumer must be written for: processing the same event twice has to converge to the
@@ -350,7 +313,7 @@ consumer be sloppy and still land correct, so one field in the payload can buy i
 whole downstream.
 
 Two things about option 3: the transaction is not decoration (put the dedup insert in a different
-transaction from the effect, or in Redis, and you have rebuilt the dual write of §11, with a new
+transaction from the effect, or in Redis, and you have rebuilt the dual write of §09, with a new
 failure where the marker says "handled" and the work never happened); and processed_events grows
 forever, so you prune it by age, which makes deduplication exactly as good as that retention window.
 SQS FIFO has the same limit and says so: "within a 5-minute deduplication window, only one instance
@@ -365,7 +328,7 @@ idempotent and still wrong, because idempotent is not order-proof. That needs a 
 (UPDATE ... WHERE version < :v), which is §04 arriving in the consumer. All of it is asserted by
 test-model.ts.
 
-## 11. The dual write: outbox and CDC
+## 09. The dual write: outbox and CDC
 
 Every example on this page has quietly cheated. Each one writes something down and publishes an event
 about it, and assumes both happen. They cannot — not atomically. A database transaction does not
@@ -379,7 +342,7 @@ into an `outbox` table describing the event. One transaction, one system, atomic
 reads unpublished outbox rows, pushes them to the broker and marks them sent. The crash does not
 disappear, it becomes survivable: die before the relay runs and the row is still there on restart;
 die after publishing but before marking it sent and the relay publishes twice — at-least-once again
-(§03), which is why the consumer must be idempotent (§10). The outbox does not buy exactly-once; it
+(§03), which is why the consumer must be idempotent (§08). The outbox does not buy exactly-once; it
 buys "never silently lost".
 
 CDC answers the same question from the other side: instead of writing an event by hand, read the
@@ -392,7 +355,7 @@ stops being an internal detail and becomes the public contract.
 The page's sandbox lets you tick "crash", place an order and compare the modes: direct dual write
 loses the event permanently, outbox mode leaves a pending row the relay still publishes.
 
-## 12. What you give up
+## 10. What you give up
 
 Everything before this is mechanism, and mechanism reads like advocacy. The bill, paid on day one
 whether or not the decoupling ever pays you back:
@@ -426,7 +389,7 @@ order got the "payment problem" email and why. Without a correlation id the ques
 from true, complete logs; with one it takes a click. Same incident, same services, same logs — the
 difference is one field somebody either threaded through beforehand or didn't.
 
-## 13. The whole page in rules, and scope
+## 11. The whole page in rules, and scope
 
 1. A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
    doesn't un-happen it.
@@ -442,43 +405,42 @@ difference is one field somebody either threaded through beforehand or didn't.
    a rename breaks everyone at once, a type change breaks them silently; a genuinely breaking change
    is a new event type published beside the old one, because fact 1 means you cannot enumerate who
    to warn.
-6. SSE is one HTTP response the server keeps writing to, in the wire format data:/event:/id:/retry:,
-   one direction only.
-7. AI model streaming is SSE with a documented event schema: message_start → per-block
-   content_block_start/delta/stop → message_delta → message_stop. Tool-call arguments arrive as JSON
-   fragments that are only safe to parse once their block closes.
-8. A multi-agent system is a DAG reacting to done events; the ready set is recomputed every round,
+6. A multi-agent system is a DAG reacting to done events; the ready set is recomputed every round,
    the same shape as an event loop's phases one level up.
-9. Agent state doesn't have to be stored directly — folding an append-only event log recovers it, for
+7. Agent state doesn't have to be stored directly — folding an append-only event log recovers it, for
    free, until the log itself needs compaction.
-10. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
+8. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
    limit belongs in a dead-letter queue, not in an infinite retry loop.
-11. You cannot write to a database and publish an event atomically. Make it one local write — an
+9. You cannot write to a database and publish an event atomically. Make it one local write — an
    outbox row in the same transaction, or the replication log itself (CDC) — and let a relay publish,
    or accept that a crash in the gap loses the event silently. The same rule governs a deduplication
    table: mark the event handled in the same transaction as the effect, or you have built the dual
    write again.
-12. The bill arrives on day one: no stack trace, no "find all callers", eventual consistency visible
+10. The bill arrives on day one: no stack trace, no "find all callers", eventual consistency visible
    on someone's screen, and a broker to operate. If you can name your one consumer, write the
    function call instead.
 
-Left out, on purpose. The outbox and change-data-capture have a section of their own (§11). Two more
-a production system hits early, named rather than half-explained:
+Left out, on purpose. The outbox and change-data-capture have a section of their own (§09). Three
+more, named rather than half-explained:
 
+- The wire. How events actually cross a process boundary to one identified reader — Server-Sent
+  Events, its wire format, reconnection, and the way a model's tokens reach a screen — is a transport
+  question rather than an architectural one. It used to live on this page and was pulled out, because
+  two sections of HTTP mechanics on a page about architecture taught the wrong lesson about what
+  event-driven means. It now has its own page: https://pasekpasek.github.io/streaming-worked-out/.
+  §02's subscribe(event => res.write(event)) is the seam between the two.
 - Sagas. Once a workflow spans services there is no transaction to roll back. A saga replaces
   rollback with explicit compensating actions — refund the payment, release the reservation — which
   means designing the undo for every step, and accepting that the system is briefly, visibly
   inconsistent while it runs.
 - End-to-end exactly-once. §03's exactly-once claims stop at each broker's own boundary. Chaining two
   systems together does not compose their guarantees; the joint is where duplicates reappear, and
-  idempotency (§10) is the only thing that actually travels.
+  idempotency (§08) is the only thing that actually travels.
 
 ## About this page's models
 
-Five of this page's models are backed by running code, checked by test-model.ts (21 checks):
+Four of this page's models are backed by running code, checked by test-model.ts (18 checks):
 
-- The SSE parser is checked against a real node:http server, including an event deliberately split
-  across two TCP-level writes, over a real fetch + ReadableStream client.
 - The DAG scheduler (ready-set computation, parent-unblocking, and the case where a child comes back
   blocked and still has to unblock its parent) is checked against an independently-written oracle
   port of the real algorithm in 4th-devs (05_01_agent_graph/src/scheduler/graph.ts and loop.ts) —
@@ -487,14 +449,12 @@ Five of this page's models are backed by running code, checked by test-model.ts 
   (05_01_agent_graph/src/scheduler/recovery.ts, computeRetryDelayMs).
 - The §05 schema-evolution matrix is asserted verdict by verdict across five changes and three
   consumers, so the claim that a retype fails silently for two of them is executed, not described.
-- The §10 idempotency models are checked: delta reaches 1000 after a redelivery, the absolute write
+- The §08 idempotency models are checked: delta reaches 1000 after a redelivery, the absolute write
   stays 500, dedup ignores the duplicate, and the out-of-order absolute write is idempotent and
   still wrong.
 
 Everything about Kafka, SQS, SNS, EventBridge and NATS delivery/ordering guarantees is not modeled —
 those systems aren't run locally; those claims are cited and quoted from official documentation, as
-are Confluent's schema-compatibility definitions and Fowler's event-shape taxonomy. The
-§07 streaming fixture is quoted verbatim from Anthropic's own published documentation, not captured
-from a live API call.
+are Confluent's schema-compatibility definitions and Fowler's event-shape taxonomy.
 
 Run the harness: node test-model.ts

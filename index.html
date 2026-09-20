@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Event-Driven Architecture, Worked Out — Queues, SSE and AI Agents in TypeScript</title>
-<meta name="description" content="An interactive walkthrough of event-driven architecture: what a broker actually guarantees (Kafka, SQS, SNS, EventBridge), what Server-Sent Events really is, why SSE is a transport rather than an architecture, and how AI model streaming and multi-agent orchestration both ride on the same mechanism. Built from real broker docs, real captured AI streams, and real agent-scheduler code, in TypeScript.">
+<title>Event-Driven Architecture, Worked Out — Queues, Agents and Delivery Guarantees in TypeScript</title>
+<meta name="description" content="An interactive walkthrough of event-driven architecture: what a broker actually guarantees (Kafka, SQS, SNS, EventBridge), how ordering trades against throughput, what belongs in an event and what breaks when you change it, and multi-agent orchestration as an event-sourced system — ending with an honest account of what all of it costs. Built from real broker docs and real agent-scheduler code, in TypeScript.">
 <meta name="author" content="Pawe&#322; Pasek">
 <link rel="canonical" href="https://pasekpasek.github.io/event-driven-architecture-worked-out/">
 
 <meta property="og:type" content="article">
 <meta property="og:title" content="Event-Driven Architecture, Worked Out">
-<meta property="og:description" content="Queues, Server-Sent Events, and AI agents, derived from the same three facts. Every claim either verified by running real code or cited from a primary source.">
+<meta property="og:description" content="Queues, schemas and AI agents, derived from the same three facts — including what event-driven architecture costs you. Every claim either verified by running real code or cited from a primary source.">
 <meta property="og:url" content="https://pasekpasek.github.io/event-driven-architecture-worked-out/">
 <meta property="og:image" content="https://pasekpasek.github.io/event-driven-architecture-worked-out/og.png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="A dependency graph of tasks reacting to events, with the ready set highlighted.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Event-Driven Architecture, Worked Out">
-<meta name="twitter:description" content="Queues, Server-Sent Events, and AI agents, derived from the same three facts. Every claim either verified by running real code or cited from a primary source.">
+<meta name="twitter:description" content="Queues, schemas and AI agents, derived from the same three facts — including what event-driven architecture costs you. Every claim either verified by running real code or cited from a primary source.">
 <meta name="twitter:image" content="https://pasekpasek.github.io/event-driven-architecture-worked-out/og.png">
 <meta name="theme-color" content="#1A2028">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -29,10 +29,10 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "Event-Driven Architecture, Worked Out",
-  "description": "An interactive walkthrough of event-driven architecture: broker delivery guarantees, ordering and partitioning, Server-Sent Events, AI model streaming, and multi-agent orchestration as event-sourced systems.",
+  "description": "An interactive walkthrough of event-driven architecture: broker delivery guarantees, ordering and partitioning, event schema evolution, idempotency, the dual write, and multi-agent orchestration as event-sourced systems.",
   "author": { "@type": "Person", "name": "Paweł Pasek", "url": "https://github.com/PasekPasek" },
   "inLanguage": "en",
-  "keywords": "event-driven architecture, TypeScript, Kafka, SQS, SNS, EventBridge, NATS, Server-Sent Events, SSE, AI agents, event sourcing, message queue",
+  "keywords": "event-driven architecture, TypeScript, Kafka, SQS, SNS, EventBridge, NATS, AI agents, event sourcing, message queue, idempotency, outbox pattern, change data capture, schema evolution",
   "about": { "@type": "Thing", "name": "Event-driven architecture" }
 }
 </script>
@@ -288,24 +288,22 @@ ol.out li.new{color:var(--live)}
   <p class="kicker">event-driven architecture — worked out</p>
   <h1>How events actually flow, from a queue to an AI agent</h1>
   <p class="lead">A producer publishes a fact. Something, eventually, reacts to it. Everything else —
-  brokers, Server-Sent Events, streaming model output, multi-agent orchestration — is a variation on
-  that one relationship. This page derives event-driven architecture from three things that are
-  always true, then shows the same three things underneath a Kafka topic, an <code>EventSource</code>
-  connection, and a graph of AI agents reacting to each other's output.</p>
+  brokers, partitions, retries, outboxes, multi-agent orchestration — is a variation on that one
+  relationship. This page derives event-driven architecture from three things that are always true,
+  then shows the same three things underneath a Kafka topic, an event schema nobody can migrate in
+  one go, and a graph of AI agents reacting to each other's output.</p>
   <ol class="toc">
     <li><a href="#truths">01 — Three things always true</a></li>
     <li><a href="#build-it">02 — If you had to build it</a></li>
     <li><a href="#guarantees">03 — Delivery guarantees, for real</a></li>
     <li><a href="#ordering">04 — Ordering, partitioning and parallelism</a></li>
     <li><a href="#shape">05 — What goes in an event, and what breaks when it changes</a></li>
-    <li><a href="#sse">06 — What SSE actually is, and what it isn't</a></li>
-    <li><a href="#ai-streaming">07 — AI model streaming as an SSE application</a></li>
-    <li><a href="#agents">08 — Agents as event-driven systems</a></li>
-    <li><a href="#event-sourcing">09 — Event sourcing and agent state</a></li>
-    <li><a href="#failure">10 — Failure, retries, poison messages</a></li>
-    <li><a href="#dual-write">11 — The dual write: outbox and CDC</a></li>
-    <li><a href="#cost">12 — What you give up</a></li>
-    <li><a href="#rules">13 — The whole page in rules, and scope</a></li>
+    <li><a href="#agents">06 — Agents as event-driven systems</a></li>
+    <li><a href="#event-sourcing">07 — Event sourcing and agent state</a></li>
+    <li><a href="#failure">08 — Failure, retries, poison messages</a></li>
+    <li><a href="#dual-write">09 — The dual write: outbox and CDC</a></li>
+    <li><a href="#cost">10 — What you give up</a></li>
+    <li><a href="#rules">11 — The whole page in rules, and scope</a></li>
   </ol>
 </header>
 
@@ -324,7 +322,7 @@ ol.out li.new{color:var(--live)}
       <code>change the price</code>. A consumer that fails to process it does not un-happen it.
       <p>This is why retrying a failed consumer is safe in a way retrying a failed RPC often isn't:
       the fact is still true, and processing it again should converge to the same result (see
-      idempotency in §10).</p></li>
+      idempotency in §08).</p></li>
     <li>Coupling doesn't disappear, it moves: from "who do I call" (a function reference, a service
       URL) to "what shape do I emit, what shape do I expect to read." A schema change is now the
       thing that breaks consumers, not a moved endpoint.</li>
@@ -333,36 +331,32 @@ ol.out li.new{color:var(--live)}
   with a specific answer to "how many consumers, in what order"; an AI agent reacting to another
   agent's completion is fact 2, with the agent as both producer and consumer.</p>
   <div class="mapwrap">
-    <svg class="map" viewBox="0 0 700 254" role="img" aria-label="Dependency map: every later section hangs off one of the three facts, and the bottom row closes the page">
+    <svg class="map" viewBox="0 0 610 254" role="img" aria-label="Dependency map: every later section hangs off one of the three facts, and the bottom row closes the page">
       <g class="ab root"><a href="#truths"><rect x="15" y="10" width="150" height="30" rx="3"/><text x="90" y="30" text-anchor="middle">01 · nobody knows who</text></a></g>
       <g class="ab root"><a href="#truths"><rect x="205" y="10" width="150" height="30" rx="3"/><text x="280" y="30" text-anchor="middle">02 · already happened</text></a></g>
       <g class="ab root"><a href="#truths"><rect x="395" y="10" width="150" height="30" rx="3"/><text x="470" y="30" text-anchor="middle">03 · schema coupling</text></a></g>
 
-      <path class="e" d="M90,40 L75,104"/>
-      <path class="e" d="M90,40 L210,104"/>
-      <path class="e" d="M90,40 L345,104"/>
-      <path class="e" d="M470,40 L480,104"/>
-      <path class="e" d="M470,40 L615,104"/>
-      <path class="e" d="M280,40 L75,169"/>
-      <path class="e" d="M280,40 L210,169"/>
-      <path class="e" d="M280,40 L345,169"/>
-      <path class="e" d="M280,40 L480,169"/>
-      <path class="e" d="M470,40 L615,169"/>
+      <path class="e" d="M90,40 L85,104"/>
+      <path class="e" d="M90,40 L235,104"/>
+      <path class="e" d="M90,40 L385,104"/>
+      <path class="e" d="M470,40 L535,104"/>
+      <path class="e" d="M280,40 L85,169"/>
+      <path class="e" d="M280,40 L235,169"/>
+      <path class="e" d="M280,40 L385,169"/>
+      <path class="e" d="M280,40 L535,169"/>
 
-      <g class="ab"><a href="#build-it"><rect x="15" y="110" width="120" height="26" rx="3"/><text x="75" y="127" text-anchor="middle">§02 build it</text></a></g>
-      <g class="ab"><a href="#guarantees"><rect x="150" y="110" width="120" height="26" rx="3"/><text x="210" y="127" text-anchor="middle">§03 guarantees</text></a></g>
-      <g class="ab"><a href="#ordering"><rect x="285" y="110" width="120" height="26" rx="3"/><text x="345" y="127" text-anchor="middle">§04 ordering</text></a></g>
-      <g class="ab"><a href="#shape"><rect x="420" y="110" width="120" height="26" rx="3"/><text x="480" y="127" text-anchor="middle">§05 event shape</text></a></g>
-      <g class="ab"><a href="#sse"><rect x="555" y="110" width="120" height="26" rx="3"/><text x="615" y="127" text-anchor="middle">§06 the wire</text></a></g>
+      <g class="ab"><a href="#build-it"><rect x="25" y="110" width="120" height="26" rx="3"/><text x="85" y="127" text-anchor="middle">§02 build it</text></a></g>
+      <g class="ab"><a href="#guarantees"><rect x="175" y="110" width="120" height="26" rx="3"/><text x="235" y="127" text-anchor="middle">§03 guarantees</text></a></g>
+      <g class="ab"><a href="#ordering"><rect x="325" y="110" width="120" height="26" rx="3"/><text x="385" y="127" text-anchor="middle">§04 ordering</text></a></g>
+      <g class="ab"><a href="#shape"><rect x="475" y="110" width="120" height="26" rx="3"/><text x="535" y="127" text-anchor="middle">§05 event shape</text></a></g>
 
-      <g class="ab"><a href="#agents"><rect x="15" y="175" width="120" height="26" rx="3"/><text x="75" y="192" text-anchor="middle">§08 agents</text></a></g>
-      <g class="ab"><a href="#event-sourcing"><rect x="150" y="175" width="120" height="26" rx="3"/><text x="210" y="192" text-anchor="middle">§09 event log</text></a></g>
-      <g class="ab"><a href="#failure"><rect x="285" y="175" width="120" height="26" rx="3"/><text x="345" y="192" text-anchor="middle">§10 retries</text></a></g>
-      <g class="ab"><a href="#dual-write"><rect x="420" y="175" width="120" height="26" rx="3"/><text x="480" y="192" text-anchor="middle">§11 dual write</text></a></g>
-      <g class="ab"><a href="#ai-streaming"><rect x="555" y="175" width="120" height="26" rx="3"/><text x="615" y="192" text-anchor="middle">§07 AI streams</text></a></g>
+      <g class="ab"><a href="#agents"><rect x="25" y="175" width="120" height="26" rx="3"/><text x="85" y="192" text-anchor="middle">§06 agents</text></a></g>
+      <g class="ab"><a href="#event-sourcing"><rect x="175" y="175" width="120" height="26" rx="3"/><text x="235" y="192" text-anchor="middle">§07 event log</text></a></g>
+      <g class="ab"><a href="#failure"><rect x="325" y="175" width="120" height="26" rx="3"/><text x="385" y="192" text-anchor="middle">§08 retries</text></a></g>
+      <g class="ab"><a href="#dual-write"><rect x="475" y="175" width="120" height="26" rx="3"/><text x="535" y="192" text-anchor="middle">§09 dual write</text></a></g>
 
-      <g class="goal"><a href="#cost"><rect x="180" y="220" width="160" height="26" rx="3"/><text x="260" y="237" text-anchor="middle">§12 what it costs</text></a></g>
-      <g class="goal"><a href="#rules"><rect x="360" y="220" width="160" height="26" rx="3"/><text x="440" y="237" text-anchor="middle">§13 the whole thing</text></a></g>
+      <g class="goal"><a href="#cost"><rect x="140" y="220" width="160" height="26" rx="3"/><text x="220" y="237" text-anchor="middle">§10 what it costs</text></a></g>
+      <g class="goal"><a href="#rules"><rect x="320" y="220" width="160" height="26" rx="3"/><text x="400" y="237" text-anchor="middle">§11 the whole thing</text></a></g>
     </svg>
   </div>
   <div class="mapkey">
@@ -372,13 +366,6 @@ ol.out li.new{color:var(--live)}
     <span>click any box to jump to it</span>
   </div>
 
-  <p>One box on that map needs a warning label. §06 is about Server-Sent Events, and SSE
-  <em>breaks</em> fact 1: the server holds one specific client's connection and writes straight down
-  it, knowing exactly who is on the other end. It hangs off fact 3 rather than fact 1, because what
-  it has to teach is about the shape of what crosses the boundary, not about who is listening. Every
-  event-driven system eventually has an edge where events stop being broadcast to whoever cares and
-  start being written to one identified reader. SSE is what that edge looks like, which is precisely
-  why it earns a section.</p>
 </section>
 <section id="build-it">
   <div class="sec-head"><span class="sec-num">02</span><h2>If you had to build it</h2></div>
@@ -416,9 +403,35 @@ ol.out li.new{color:var(--live)}
       <tr><td>1</td><td class="prose">Reacting to something, at all</td><td class="prose">Survive a crash</td></tr>
       <tr><td>2</td><td class="prose">Surviving a crash (the fact is on disk)</td><td class="prose">Deliver to a consumer that wasn't listening yet</td></tr>
       <tr><td>3</td><td class="prose">Resuming after a restart</td><td class="prose">Tell the difference between "processed" and "crashed mid-process"</td></tr>
-      <tr><td>4</td><td class="prose">Redelivering what wasn't acknowledged</td><td class="prose">Guarantee a redelivery isn't processed twice (§10: idempotency)</td></tr>
+      <tr><td>4</td><td class="prose">Redelivering what wasn't acknowledged</td><td class="prose">Guarantee a redelivery isn't processed twice (§08: idempotency)</td></tr>
     </tbody>
   </table></div>
+
+  <h3>What Drafts 1 and 2 look like when somebody ships them</h3>
+  <p>Those four drafts are deliberately toys. Here is the whole event bus that
+  <code>4th-devs</code> — a real open-source agent-orchestration course, which the rest of this page
+  keeps returning to — actually runs its agent system on: a sequence counter, a set of listeners, and
+  a bounded buffer of everything already emitted.</p>
+  <pre class="lit"><span class="ln">let _seq = 0</span><span class="ln">const listeners = new Set&lt;Listener&gt;()</span><span class="ln">const buffer: AgentEvent[] = []</span><span class="ln"></span><span class="ln">export const emit = (type: string, data = {}): void =&gt; {</span><span class="ln">  const event = { seq: ++_seq, type, time: new Date().toISOString(), data }</span><span class="ln">  buffer.push(event)</span><span class="ln">  if (buffer.length &gt; MAX_BUFFER) buffer.shift()</span><span class="ln">  for (const listener of listeners) listener(event)</span><span class="ln">}</span><span class="ln"></span><span class="ln">export const subscribe = (listener: Listener) =&gt; {</span><span class="ln">  listeners.add(listener)</span><span class="ln">  return () =&gt; { listeners.delete(listener) }</span><span class="ln">}</span><span class="ln"></span><span class="ln">export const replay = (): readonly AgentEvent[] =&gt; buffer</span></pre>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/events.ts">4th-devs, 05_01_agent_graph/src/events.ts</a>.</p>
+  <p>That is Draft 1 and Draft 2 in about forty lines, and nothing more. <code>emit</code> doesn't
+  know or care who is listening — fact 1, exactly, in one <code>for</code> loop. The bounded
+  <code>buffer</code> plus <code>replay()</code> is a miniature durable log: a listener that attaches
+  late is still handed everything that already happened. It never reaches Draft 3, because nothing
+  here tracks a per-consumer position, and it never reaches Draft 4, because nothing acknowledges
+  anything. For coordinating agents inside one process (§06) that is the correct amount of machinery,
+  and the drafts above are the map of what you'd have to add the moment it isn't.</p>
+
+  <h3>The edge, where this stops being enough</h3>
+  <p>Notice what the bus cannot do: leave the process. The moment those events have to reach a
+  dashboard in somebody's browser, the problem changes shape — one specific reader, across a process
+  boundary, over a protocol. Every event-driven system eventually grows that edge, where events stop
+  being broadcast to whoever cares and start being written down a socket to one identified
+  reader, and the adapter between the two halves is one line:
+  <code>subscribe(event =&gt; res.write(event))</code>. The left-hand side is this page. The right-hand
+  side — Server-Sent Events, the wire format, reconnection, and how a model's tokens reach a screen —
+  is a transport rather than an architecture, and it has a page of its own:
+  <a href="https://pasekpasek.github.io/streaming-worked-out/">streaming-worked-out</a>.</p>
 </section>
 <section id="guarantees">
   <div class="sec-head"><span class="sec-num">03</span><h2>Delivery guarantees, for real</h2></div>
@@ -555,7 +568,7 @@ ol.out li.new{color:var(--live)}
           talking to you at all. In exchange every field is now a published promise — this is the
           row where the rest of this section applies.</td></tr>
       <tr><td>Event sourcing</td>
-        <td class="prose">Every change, kept forever; state is the fold over the log (§09).</td>
+        <td class="prose">Every change, kept forever; state is the fold over the log (§07).</td>
         <td class="prose">The log <em>is</em> the database, with everything that implies —
           compaction, replay cost, and no way to quietly fix a bad row.</td></tr>
     </tbody>
@@ -620,141 +633,8 @@ ol.out li.new{color:var(--live)}
     <p class="hint" data-sc-verdict></p>
   </div>
 </section>
-<section id="sse">
-  <div class="sec-head"><span class="sec-num">06</span><h2>What SSE actually is, and what it isn't</h2></div>
-  <p class="lead">Server-Sent Events is not event-driven architecture. It's a transport — one
-  connection, one identified reader, no broker, no fan-out, no durability. Putting it in this page
-  needs a reason, and the reason is the seam: it's where an event-driven system stops talking to
-  itself and starts writing to somebody.</p>
-
-  <h3>First, the part that really is event-driven</h3>
-  <p>Inside a process, §01's fact 1 is cheap to satisfy. Here is the whole event bus
-  <code>4th-devs</code> runs its agent system on — a sequence counter, a set of listeners, and a
-  bounded buffer of everything already emitted:</p>
-  <pre class="lit"><span class="ln">let _seq = 0</span><span class="ln">const listeners = new Set&lt;Listener&gt;()</span><span class="ln">const buffer: AgentEvent[] = []</span><span class="ln"></span><span class="ln">export const emit = (type: string, data = {}): void =&gt; {</span><span class="ln">  const event = { seq: ++_seq, type, time: new Date().toISOString(), data }</span><span class="ln">  buffer.push(event)</span><span class="ln">  if (buffer.length &gt; MAX_BUFFER) buffer.shift()</span><span class="ln">  for (const listener of listeners) listener(event)</span><span class="ln">}</span><span class="ln"></span><span class="ln">export const subscribe = (listener: Listener) =&gt; {</span><span class="ln">  listeners.add(listener)</span><span class="ln">  return () =&gt; { listeners.delete(listener) }</span><span class="ln">}</span><span class="ln"></span><span class="ln">export const replay = (): readonly AgentEvent[] =&gt; buffer</span></pre>
-  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/events.ts">4th-devs, 05_01_agent_graph/src/events.ts</a>.</p>
-  <p>That is §02's Draft 1 and Draft 2 in about forty lines. <code>emit</code> doesn't know or care
-  who is listening — fact 1, exactly. The bounded <code>buffer</code> plus <code>replay()</code> is a
-  miniature durable log: a listener that attaches late can still be handed everything that already
-  happened. It is the agent system of §08 talking to itself, and it never leaves the process.</p>
-
-  <h3>Then, the wire</h3>
-  <p>Now the events have to reach a dashboard in a browser, which is a different problem: one
-  specific reader, across a process boundary, over HTTP. That's SSE. One HTTP response that never
-  ends — no upgrade handshake, no new protocol, just <code>Content-Type: text/event-stream</code> on
-  an ordinary response the server keeps writing to, and a client that reads it as a sequence of
-  events instead of one blob. One direction only: server to client. A client that wants to talk back
-  makes a separate, ordinary HTTP request.</p>
-  <h3>The wire format</h3>
-  <p>The body is lines of <code>field: value</code>. A blank line means "dispatch what's buffered so
-  far":</p>
-  <pre>id: 42
-event: task.completed
-data: {"taskId":"write-intro","actor":"writer"}
-
-data: a plain message with no id or type — dispatched as "message"
-</pre>
-  <ul class="plain">
-    <li><code>data:</code> — the payload. Multiple <code>data:</code> lines before a blank line are
-    joined with newlines into one event.</li>
-    <li><code>event:</code> — the event type a client can filter on with
-    <code>addEventListener(type, ...)</code>; omitted, it dispatches as the generic
-    <code>"message"</code> event.</li>
-    <li><code>id:</code> — the reconnect checkpoint. The browser remembers the last one it saw and
-    resends it as a <code>Last-Event-ID</code> request header if the connection drops and it
-    reconnects.</li>
-    <li><code>retry:</code> — how many milliseconds to wait before that automatic reconnect.</li>
-  </ul>
-  <h3>The seam, in four lines</h3>
-  <p>Here is the same repository's SSE handler, quoted unmodified. Read the last two lines as the
-  join between the two halves of this section — <code>replay()</code> and <code>subscribe()</code>
-  on the left are the in-process bus from above; <code>res.write</code> on the right is one socket
-  belonging to one browser:</p>
-  <pre class="lit"><span class="ln">res.writeHead(200, {</span><span class="ln">  'content-type': 'text/event-stream',</span><span class="ln">  'cache-control': 'no-cache',</span><span class="ln">  connection: 'keep-alive',</span><span class="ln">})</span><span class="ln">res.flushHeaders()</span><span class="ln">for (const past of replay()) res.write(`data: ${JSON.stringify(past)}\n\n`)</span><span class="ln">const unsubscribe = subscribe(event => res.write(`data: ${JSON.stringify(event)}\n\n`))</span></pre>
-  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/server.ts">4th-devs, 05_01_agent_graph/src/server.ts</a> (<code>sseHandler</code>).</p>
-  <p>That adapter is the whole trick, and it's why "is SSE event-driven?" is the wrong question. The
-  bus is event-driven; the socket isn't; <code>subscribe(event =&gt; res.write(...))</code> is the
-  four-word bridge between them. Swap the right-hand side for a Kafka producer and the left-hand side
-  doesn't change — which is exactly what fact 3 (§01) predicted: the coupling that survives is the
-  shape of the event, not who reads it.</p>
-  <p>Notice it replays every buffered past event on every new connection, unconditionally — it never
-  reads a <code>Last-Event-ID</code> header at all. That's a legitimate, simpler design for a small
-  bounded buffer: the client re-renders from scratch and de-duplicates by id, so exact resumption
-  doesn't need to be the server's job. The client side is equally small:</p>
-  <pre class="lit"><span class="ln">const es = new EventSource("/events");</span><span class="ln">es.onmessage = (e) => { const ev = JSON.parse(e.data); handleEvent(ev); };</span></pre>
-  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/dashboard/app.js">4th-devs, 05_01_agent_graph/src/dashboard/app.js</a>.</p>
-
-  <div class="demo">
-    <h4>Sandbox — bytes arrive in chunks, events come out on blank lines</h4>
-    <p class="ctlnote">The server wrote one stream; the network hands it over in whatever pieces it
-    likes. Click through the chunks and watch the middle panel: that's the half-finished line the
-    parser is holding. An event only appears on the right when a <em>blank line</em> arrives.</p>
-    <div class="simgrid">
-      <div class="pane">
-        <h4>the stream, as the server wrote it</h4>
-        <pre data-sse-stream style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere"></pre>
-      </div>
-      <div class="pane">
-        <h4>parser buffer — an incomplete line</h4>
-        <pre data-sse-buf style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--warn)">(empty)</pre>
-        <h4 style="margin-top:14px">dispatched to the client</h4>
-        <ul class="rows" data-sse-out><li class="empty">(nothing yet)</li></ul>
-      </div>
-    </div>
-    <div class="controls">
-      <button type="button" data-sse-next>receive next chunk</button>
-      <button type="button" class="ghost" data-sse-reset>reset</button>
-    </div>
-    <p class="hint" data-sse-hint>Five chunks. The first one is cut in the middle of a field name.</p>
-  </div>
-</section>
-<section id="ai-streaming">
-  <div class="sec-head"><span class="sec-num">07</span><h2>AI model streaming as an SSE application</h2></div>
-  <p class="lead">"The model streams its response" is section 5, with a schema. Set
-  <code>stream: true</code> on an Anthropic Messages API call and the response is exactly a
-  <code>text/event-stream</code>, readable by the same <code>EventSource</code>-shaped logic — only
-  now the event types and payloads are documented, not ad hoc.</p>
-  <p>One turn is a fixed sequence: <code>message_start</code> (the message shell, with an empty
-  content array), then per content block <code>content_block_start</code> →
-  repeated <code>content_block_delta</code> → <code>content_block_stop</code>, then
-  <code>message_delta</code> (carrying the final <code>stop_reason</code>) and
-  <code>message_stop</code>. A <code>ping</code> event may appear between deltas purely as a
-  keep-alive, with no content of its own — the same role as the <code>: connected</code> comment
-  line a raw SSE server can send.</p>
-  <p>A tool call is a content block whose <code>content_block_start</code> has
-  <code>"type": "tool_use"</code> and a <em>partial</em>, growing set of arguments: each
-  <code>content_block_delta</code> for that block carries an
-  <code>input_json_delta</code> with a <code>partial_json</code> string fragment, not a complete
-  value. The fragments must be concatenated and are only guaranteed parseable once
-  <code>content_block_stop</code> closes the block — the exact same "buffer until the boundary" rule
-  as an SSE <code>data:</code> field in §06, one level up the stack.</p>
-
-  <div class="demo">
-    <h4>Sandbox — stepping through a real captured tool-call turn</h4>
-    <p class="ctlnote">Press "next chunk" repeatedly. Watch the lower-right panel: the tool's arguments arrive as a string that is <em>not valid JSON</em> until the block closes. That is the whole reason a client accumulates deltas instead of parsing each one.</p>
-    <div class="simgrid">
-      <div class="pane">
-        <h4>SSE event</h4>
-        <pre data-ai-event style="margin:0">(press "next chunk")</pre>
-      </div>
-      <div class="pane">
-        <h4>accumulated so far</h4>
-        <div data-ai-text style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;white-space:pre-wrap"></div>
-        <h4 style="margin-top:14px">tool input (raw, may not be valid JSON yet)</h4>
-        <div data-ai-tool style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;white-space:pre-wrap;color:var(--stored)"></div>
-      </div>
-    </div>
-    <div class="controls">
-      <button type="button" data-ai-next>next chunk</button>
-      <button type="button" class="ghost" data-ai-reset>reset</button>
-    </div>
-    <p class="hint" data-ai-hint>Quoted verbatim from Anthropic's Messages API streaming
-    documentation ("Streaming request with tool use") — see
-    <code>fixtures/ai-stream-tool-call.json</code> for the exact bytes and their source.</p>
-  </div>
-</section>
 <section id="agents">
-  <div class="sec-head"><span class="sec-num">08</span><h2>Agents as event-driven systems</h2></div>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Agents as event-driven systems</h2></div>
   <p class="lead">An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events:
   its own tool result, another agent's completion, a human answering a question it posed. Wire
   several agents together and the whole system is a graph of tasks reacting to each other's
@@ -775,19 +655,19 @@ data: a plain message with no id or type — dispatched as "message"
 
   <h3>Where the graph comes from</h3>
   <p>A DAG diagram invites the assumption that some human drew it. In this system nobody did. The
-  graph is built at runtime by agents calling a tool — and that tool call is the one from §07, the
-  arguments that arrived as <code>partial_json</code> fragments and only became parseable when the
-  content block closed. Here is the tool, with two of its parameters elided:</p>
+  graph is built at runtime, by agents calling a tool. Here is the tool, with two of its parameters
+  elided:</p>
   <pre class="lit"><span class="ln">export const definition: FunctionToolDefinition = {</span><span class="ln">  name: 'delegate_task',</span><span class="ln">  description: 'Create a child task assigned to an existing actor. Use returned task ids when creating dependency chains.',</span><span class="ln">  parameters: {</span><span class="ln">    type: 'object',</span><span class="ln">    properties: {</span><span class="ln">      actorName: { type: 'string', description: 'Target actor name, e.g. researcher or writer' },</span><span class="ln">      title: { type: 'string', description: 'Short task title' },</span><span class="ln">      dependsOnTaskIds: {</span><span class="ln">        type: 'array',</span><span class="ln">        description: 'Task ids that must finish before this task can run',</span><span class="ln">        items: { type: 'string' },</span><span class="ln">      },</span><span class="ln">    },</span><span class="ln">  },</span><span class="ln">}</span></pre>
   <p>And the single line in its handler that decides whether the new task is runnable or has to
   wait — which is the edge in the graph, created:</p>
   <pre class="lit"><span class="ln">status: dependsOnTaskIds.length &gt; 0 ? 'waiting' : 'todo',</span></pre>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/tools/task/delegate.ts">4th-devs, 05_01_agent_graph/src/tools/task/delegate.ts</a>.</p>
-  <p>So the chain runs end to end across three sections of this page: a model emits
-  <code>input_json_delta</code> fragments over SSE (§07); the fragments concatenate into the
-  arguments to <code>delegate_task</code>; the handler writes a task whose <code>dependsOn</code>
-  <em>is</em> the edge; and the scheduler below then walks the graph the model just drew. The
-  "ready set" is not a diagram. It's whatever the agents have talked themselves into so far.</p>
+  <p>So the chain runs end to end: a model decides to delegate and streams out the arguments as JSON
+  fragments, parseable only once the block closes
+  (<a href="https://pasekpasek.github.io/streaming-worked-out/">how that arrives is a page of its
+  own</a>); the handler writes a task whose <code>dependsOn</code> <em>is</em> the edge; and the
+  scheduler below then walks the graph the model just drew. The "ready set" is not a diagram. It's
+  whatever the agents have talked themselves into so far.</p>
 
   <h3>One file, both halves of fact 2</h3>
   <p>Worth pausing on the pair of names, because they are the clearest example on this page of the
@@ -823,7 +703,7 @@ data: a plain message with no id or type — dispatched as "message"
   <code>blocked</code> and still has to unblock the parent that was waiting on it.</p>
 </section>
 <section id="event-sourcing">
-  <div class="sec-head"><span class="sec-num">09</span><h2>Event sourcing and agent state</h2></div>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Event sourcing and agent state</h2></div>
   <p class="lead">Nothing so far has stored "the current state" anywhere. It's derived: replay the
   event log from empty, and you have it. That's not an implementation detail — it's a deliberate
   trade of storage simplicity for compute-on-read.</p>
@@ -839,7 +719,7 @@ data: a plain message with no id or type — dispatched as "message"
   <p class="caveat">It doesn't stay free. A log that only ever grows eventually costs more to replay
   than a snapshot would cost to load — which is exactly why Kafka ships log compaction (keeping only
   the latest record per key) as a first-class feature, not an afterthought. Snapshotting is named
-  here, not built: out of scope for this page (§13).</p>
+  here, not built: out of scope for this page (§11).</p>
 
   <div class="demo">
     <h4>Sandbox — state as a fold over the log</h4>
@@ -855,7 +735,7 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="failure">
-  <div class="sec-head"><span class="sec-num">10</span><h2>Failure, retries, poison messages</h2></div>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Failure, retries, poison messages</h2></div>
   <p class="lead">Every "at-least-once" system in §03 can redeliver. That's not a bug the consumer
   waits out — it's a contract the consumer must be written for: processing the same event twice has
   to converge to the same result (idempotency), or duplicates corrupt state.</p>
@@ -907,7 +787,7 @@ data: a plain message with no id or type — dispatched as "message"
   payload, which is cheaper than buying it consumer by consumer.</p>
   <p class="caveat">Two things about option 3 that get skipped. First, the transaction is not
   decoration: put the dedup insert in a different transaction from the effect — or in Redis — and you
-  have rebuilt the dual write of §11, with a new failure where the marker says "handled" and the
+  have rebuilt the dual write of §09, with a new failure where the marker says "handled" and the
   work never happened. Second, <code>processed_events</code> grows forever, so you prune it by age,
   which means your deduplication is exactly as good as that retention window and no better. SQS FIFO
   is honest about having the same limit: "within a 5-minute deduplication window, only one instance
@@ -943,7 +823,7 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="dual-write">
-  <div class="sec-head"><span class="sec-num">11</span><h2>The dual write: outbox and CDC</h2></div>
+  <div class="sec-head"><span class="sec-num">09</span><h2>The dual write: outbox and CDC</h2></div>
   <p class="lead">Every example on this page has quietly cheated. Each one writes something down
   <em>and</em> publishes an event about it, and assumes both happen. They can't — not atomically.
   Your database transaction does not extend to Kafka, and the process can die in the gap.</p>
@@ -960,7 +840,7 @@ data: a plain message with no id or type — dispatched as "message"
   <p>The crash doesn't disappear; it becomes survivable. Die before the relay runs and the outbox row
   is still sitting there on restart. Die after publishing but before marking it sent, and the relay
   publishes it twice — which is at-least-once again (§03), and exactly why the consumer has to be
-  idempotent (§10). The outbox doesn't buy exactly-once; it buys "never silently lost".</p>
+  idempotent (§08). The outbox doesn't buy exactly-once; it buys "never silently lost".</p>
 
   <h3>CDC: don't write the event at all</h3>
   <p>Change-data-capture answers the same question from the other side. Instead of writing an event
@@ -995,7 +875,7 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="cost">
-  <div class="sec-head"><span class="sec-num">12</span><h2>What you give up</h2></div>
+  <div class="sec-head"><span class="sec-num">10</span><h2>What you give up</h2></div>
   <p class="lead">Everything up to here has been mechanism, and eleven sections of mechanism read
   like advocacy whether or not they meant to. So, the other side: this is the bill, and you pay it
   on day one, whether or not the decoupling ever pays you back.</p>
@@ -1075,7 +955,7 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="rules">
-  <div class="sec-head"><span class="sec-num">13</span><h2>The whole page in rules, and scope</h2></div>
+  <div class="sec-head"><span class="sec-num">11</span><h2>The whole page in rules, and scope</h2></div>
   <ol class="plain">
     <li>A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
     doesn't un-happen it.</li>
@@ -1091,12 +971,6 @@ data: a plain message with no id or type — dispatched as "message"
     only safe change; a rename breaks everyone at once, and a type change breaks them silently. A
     genuinely breaking change is a new event type published beside the old one, because fact 1 means
     you cannot enumerate who to warn.</li>
-    <li>SSE is one HTTP response the server keeps writing to, in the wire format
-    <code>data:</code>/<code>event:</code>/<code>id:</code>/<code>retry:</code>, one direction only.</li>
-    <li>AI model streaming is SSE with a documented event schema:
-    <code>message_start</code> → per-block <code>content_block_start/delta/stop</code> →
-    <code>message_delta</code> → <code>message_stop</code>. Tool-call arguments arrive as JSON
-    fragments that are only safe to parse once their block closes.</li>
     <li>A multi-agent system is a DAG reacting to <code>done</code> events; the ready set is
     recomputed every round, the same shape as an event loop's phases one level up.</li>
     <li>Agent state doesn't have to be stored directly — folding an append-only event log recovers it,
@@ -1113,23 +987,32 @@ data: a plain message with no id or type — dispatched as "message"
     the function call instead.</li>
   </ol>
   <h3>Left out, on purpose</h3>
-  <p>The outbox and change-data-capture got a section of their own (§11). Two more a production system hits early, named here rather than half-explained:</p>
+  <p>The outbox and change-data-capture got a section of their own (§09). Three more, named here
+  rather than half-explained:</p>
   <ul class="plain">
+    <li><strong>The wire.</strong> How events actually cross a process boundary to one identified
+    reader — Server-Sent Events, its wire format, reconnection, and the way a model's tokens reach a
+    screen — is a transport question rather than an architectural one. It used to live on this page
+    and was pulled out, because two sections of HTTP mechanics on a page about architecture taught
+    the wrong lesson about what event-driven means. It now has its own:
+    <a href="https://pasekpasek.github.io/streaming-worked-out/">streaming-worked-out</a>. §02's
+    <code>subscribe(event =&gt; res.write(event))</code> is the seam between the two pages.</li>
     <li><strong>Sagas.</strong> Once a workflow spans services, there is no transaction to roll back.
     A saga replaces rollback with explicit compensating actions — refund the payment, release the
     reservation — which means designing the undo for every step, and accepting that the system is
     briefly, visibly inconsistent while it runs.</li>
     <li><strong>End-to-end exactly-once.</strong> §03's exactly-once claims stop at each broker's own
     boundary. Chaining two systems together doesn't compose their guarantees; the joint is where
-    duplicates reappear, and idempotency (§10) is the only thing that actually travels.</li>
+    duplicates reappear, and idempotency (§08) is the only thing that actually travels.</li>
   </ul>
 </section>
 
 <footer>
   <p>Built by <a href="https://github.com/PasekPasek">Paweł Pasek</a>. Companion to
-  <a href="https://github.com/PasekPasek/event-loop-worked-out">event-loop-worked-out</a> and
-  <a href="https://github.com/PasekPasek/auth-worked-out">auth-worked-out</a>, which use the same
-  workshop-plate design.</p>
+  <a href="https://github.com/PasekPasek/event-loop-worked-out">event-loop-worked-out</a>,
+  <a href="https://github.com/PasekPasek/auth-worked-out">auth-worked-out</a> and
+  <a href="https://github.com/PasekPasek/streaming-worked-out">streaming-worked-out</a>, which use
+  the same workshop-plate design.</p>
 </footer>
 
 </div>
@@ -1145,155 +1028,6 @@ function computeRetryDelayMs(attempt) {
   return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** Math.max(0, attempt - 1)));
 }
 /* MODEL:backoff END */
-
-/* MODEL:sse START */
-function createSseParser() {
-  let carry = '';
-  let dataBuf = '';
-  let eventType = '';
-  let lastEventId = '';
-
-  function processLine(line, out) {
-    if (line === '') {
-      if (dataBuf !== '') {
-        out.push({
-          id: lastEventId || null,
-          event: eventType || 'message',
-          data: dataBuf.endsWith('\n') ? dataBuf.slice(0, -1) : dataBuf,
-        });
-      }
-      dataBuf = '';
-      eventType = '';
-      return;
-    }
-    if (line[0] === ':') return; // comment line, e.g. a keep-alive ping
-    const colon = line.indexOf(':');
-    const field = colon === -1 ? line : line.slice(0, colon);
-    let value = colon === -1 ? '' : line.slice(colon + 1);
-    if (value[0] === ' ') value = value.slice(1);
-    if (field === 'data') dataBuf += value + '\n';
-    else if (field === 'event') eventType = value;
-    else if (field === 'id' && !value.includes('\u0000')) lastEventId = value;
-    // 'retry' is parsed by real browsers to set the reconnection time; this
-    // model doesn't drive a real reconnect timer, so it's read and ignored.
-  }
-
-  return {
-    push(chunk) {
-      carry += chunk;
-      const lines = carry.split(/\r\n|\r|\n/);
-      carry = lines.pop();
-      const out = [];
-      for (const line of lines) processLine(line, out);
-      return out;
-    },
-    get lastEventId() {
-      return lastEventId;
-    },
-    // the partial line held back until more bytes arrive; §06's sandbox displays it
-    get buffered() {
-      return carry;
-    },
-  };
-}
-/* MODEL:sse END */
-
-(() => {
-  const root = document.getElementById('sse');
-  if (!root) return;
-  const streamEl = root.querySelector('[data-sse-stream]');
-  const bufEl = root.querySelector('[data-sse-buf]');
-  const outEl = root.querySelector('[data-sse-out]');
-  const hintEl = root.querySelector('[data-sse-hint]');
-
-  // One stream, deliberately chopped where a real socket might chop it.
-  const CHUNKS = [
-    { bytes: 'id: 1\nda',
-      note: 'Two lines arrived — but the second is cut mid-word, at "da". The parser keeps that '
-          + 'fragment and waits. You cannot act on half a field name.' },
-    { bytes: 'ta: {"type":"task.started","id":"fetch-price"}\n',
-      note: 'The rest of the line landed, so the buffer is empty again and the data: field is '
-          + 'understood. Still nothing dispatched: SSE dispatches on a blank line, and none has come.' },
-    { bytes: '\n',
-      note: 'One newline, making the blank line. Now the buffered event is dispatched — three lines '
-          + 'of input became one event.' },
-    { bytes: ': keep-alive\n\n',
-      note: 'A line starting with ":" is a comment. Servers send these so idle proxies do not close '
-          + 'the connection. It dispatches nothing.' },
-    { bytes: 'id: 2\nevent: task.completed\ndata: {"id":"fetch-price"}\n\n',
-      note: 'A whole event in one chunk this time, and it names a type — so it dispatches as '
-          + '"task.completed" rather than the default "message".' },
-  ];
-  const FULL = CHUNKS.map((c) => c.bytes).join('');
-
-  let parser = createSseParser();
-  let i = 0;
-  let events = [];
-
-  function renderStream() {
-    const consumed = CHUNKS.slice(0, i).map((c) => c.bytes).join('').length;
-    streamEl.textContent = '';
-    const done = document.createElement('span');
-    done.textContent = FULL.slice(0, consumed);
-    done.style.color = 'var(--live)';
-    const todo = document.createElement('span');
-    todo.textContent = FULL.slice(consumed);
-    todo.style.opacity = '.45';
-    streamEl.append(done, todo);
-  }
-
-  function renderEvents() {
-    outEl.innerHTML = '';
-    if (!events.length) {
-      const li = document.createElement('li');
-      li.className = 'empty';
-      li.textContent = '(nothing yet)';
-      outEl.appendChild(li);
-      return;
-    }
-    for (const e of events) {
-      const head = document.createElement('li');
-      head.className = 'fx';
-      const type = document.createElement('span');
-      type.textContent = e.event;
-      const id = document.createElement('span');
-      id.className = 'who';
-      id.textContent = `id ${e.id ?? '—'}`;
-      head.append(type, id);
-      const data = document.createElement('li');
-      data.className = 'empty';
-      data.textContent = e.data;
-      outEl.append(head, data);
-    }
-  }
-
-  function render() {
-    renderStream();
-    const buf = parser.buffered;
-    bufEl.textContent = buf === '' ? '(empty — no partial line held)' : JSON.stringify(buf);
-    renderEvents();
-    root.querySelector('[data-sse-next]').disabled = i >= CHUNKS.length;
-  }
-
-  root.querySelector('[data-sse-next]').addEventListener('click', () => {
-    if (i >= CHUNKS.length) return;
-    const chunk = CHUNKS[i];
-    const dispatched = parser.push(chunk.bytes);
-    events.push(...dispatched);
-    i++;
-    hintEl.textContent = `Chunk ${i} of ${CHUNKS.length}: ${chunk.note}`
-      + (dispatched.length ? ` (+${dispatched.length} dispatched)` : ' (0 dispatched)');
-    render();
-  });
-  root.querySelector('[data-sse-reset]').addEventListener('click', () => {
-    parser = createSseParser();
-    i = 0;
-    events = [];
-    hintEl.textContent = 'Five chunks. The first one is cut in the middle of a field name.';
-    render();
-  });
-  render();
-})();
 
 /* MODEL:scheduler START */
 // Simplified from 4th-devs (github.com/i-am-alice/4th-devs),
@@ -1790,53 +1524,6 @@ function applyDelivery(mode, state, event) {
     render();
   });
   render();
-})();
-</script>
-<script>
-(() => {
-  const root = document.getElementById('ai-streaming');
-  if (!root) return;
-  const eventEl = root.querySelector('[data-ai-event]');
-  const textEl = root.querySelector('[data-ai-text]');
-  const toolEl = root.querySelector('[data-ai-tool]');
-  let chunks = [];
-  let i = 0;
-  let text = '';
-  let toolJson = '';
-
-  function render() {
-    if (i === 0) {
-      eventEl.textContent = '(press "next chunk")';
-      return;
-    }
-    const c = chunks[i - 1];
-    eventEl.textContent = `${c.event}\n${JSON.stringify(c.data, null, 2)}`;
-    textEl.textContent = text || '(no text yet)';
-    toolEl.textContent = toolJson || '(no tool call yet)';
-  }
-
-  function apply(c) {
-    if (c.event === 'content_block_delta' && c.data.delta?.type === 'text_delta') {
-      text += c.data.delta.text;
-    }
-    if (c.event === 'content_block_delta' && c.data.delta?.type === 'input_json_delta') {
-      toolJson += c.data.delta.partial_json;
-    }
-  }
-
-  fetch('fixtures/ai-stream-tool-call.json')
-    .then((r) => r.json())
-    .then((fixture) => { chunks = fixture.chunks; });
-
-  root.querySelector('[data-ai-next]').addEventListener('click', () => {
-    if (i >= chunks.length) return;
-    apply(chunks[i]);
-    i++;
-    render();
-  });
-  root.querySelector('[data-ai-reset]').addEventListener('click', () => {
-    i = 0; text = ''; toolJson = ''; render();
-  });
 })();
 </script>
 <script>
