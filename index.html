@@ -533,7 +533,50 @@ data: {"type":"task.completed","id":"fetch-price"}
     <code>4th-devs</code>'s server replays on every new connection.</p>
   </div>
 </section>
-<section id="ai-streaming"><!-- Task 13 --></section>
+<section id="ai-streaming">
+  <div class="sec-head"><span class="sec-num">06</span><h2>AI model streaming as an SSE application</h2></div>
+  <p class="lead">"The model streams its response" is section 5, with a schema. Set
+  <code>stream: true</code> on an Anthropic Messages API call and the response is exactly a
+  <code>text/event-stream</code>, readable by the same <code>EventSource</code>-shaped logic — only
+  now the event types and payloads are documented, not ad hoc.</p>
+  <p>One turn is a fixed sequence: <code>message_start</code> (the message shell, with an empty
+  content array), then per content block <code>content_block_start</code> →
+  repeated <code>content_block_delta</code> → <code>content_block_stop</code>, then
+  <code>message_delta</code> (carrying the final <code>stop_reason</code>) and
+  <code>message_stop</code>. A <code>ping</code> event may appear between deltas purely as a
+  keep-alive, with no content of its own — the same role as the <code>: connected</code> comment
+  line a raw SSE server can send.</p>
+  <p>A tool call is a content block whose <code>content_block_start</code> has
+  <code>"type": "tool_use"</code> and a <em>partial</em>, growing set of arguments: each
+  <code>content_block_delta</code> for that block carries an
+  <code>input_json_delta</code> with a <code>partial_json</code> string fragment, not a complete
+  value. The fragments must be concatenated and are only guaranteed parseable once
+  <code>content_block_stop</code> closes the block — the exact same "buffer until the boundary" rule
+  as an SSE <code>data:</code> field in §05, one level up the stack.</p>
+
+  <div class="demo">
+    <h4>Sandbox — stepping through a real captured tool-call turn</h4>
+    <div class="simgrid">
+      <div class="pane">
+        <h4>SSE event</h4>
+        <pre data-ai-event style="margin:0">(press "next chunk")</pre>
+      </div>
+      <div class="pane">
+        <h4>accumulated so far</h4>
+        <div data-ai-text style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;white-space:pre-wrap"></div>
+        <h4 style="margin-top:14px">tool input (raw, may not be valid JSON yet)</h4>
+        <div data-ai-tool style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;white-space:pre-wrap;color:var(--stored)"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button type="button" data-ai-next>next chunk</button>
+      <button type="button" class="ghost" data-ai-reset>reset</button>
+    </div>
+    <p class="hint" data-ai-hint>Quoted verbatim from Anthropic's Messages API streaming
+    documentation ("Streaming request with tool use") — see
+    <code>fixtures/ai-stream-tool-call.json</code> for the exact bytes and their source.</p>
+  </div>
+</section>
 <section id="agents">
   <div class="sec-head"><span class="sec-num">07</span><h2>Agents as event-driven systems</h2></div>
   <p class="lead">An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events:
@@ -837,6 +880,53 @@ function runRound(tasks, runTask) {
     render();
   });
   render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('ai-streaming');
+  if (!root) return;
+  const eventEl = root.querySelector('[data-ai-event]');
+  const textEl = root.querySelector('[data-ai-text]');
+  const toolEl = root.querySelector('[data-ai-tool]');
+  let chunks = [];
+  let i = 0;
+  let text = '';
+  let toolJson = '';
+
+  function render() {
+    if (i === 0) {
+      eventEl.textContent = '(press "next chunk")';
+      return;
+    }
+    const c = chunks[i - 1];
+    eventEl.textContent = `${c.event}\n${JSON.stringify(c.data, null, 2)}`;
+    textEl.textContent = text || '(no text yet)';
+    toolEl.textContent = toolJson || '(no tool call yet)';
+  }
+
+  function apply(c) {
+    if (c.event === 'content_block_delta' && c.data.delta?.type === 'text_delta') {
+      text += c.data.delta.text;
+    }
+    if (c.event === 'content_block_delta' && c.data.delta?.type === 'input_json_delta') {
+      toolJson += c.data.delta.partial_json;
+    }
+  }
+
+  fetch('fixtures/ai-stream-tool-call.json')
+    .then((r) => r.json())
+    .then((fixture) => { chunks = fixture.chunks; });
+
+  root.querySelector('[data-ai-next]').addEventListener('click', () => {
+    if (i >= chunks.length) return;
+    apply(chunks[i]);
+    i++;
+    render();
+  });
+  root.querySelector('[data-ai-reset]').addEventListener('click', () => {
+    i = 0; text = ''; toolJson = ''; render();
+  });
 })();
 </script>
 </body>
