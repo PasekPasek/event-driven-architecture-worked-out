@@ -24,7 +24,7 @@ makes something "event-driven" rather than just "asynchronous."
 2. An event describes a fact that has already happened — price.changed, not "change the price". A
    consumer that fails to process it does not un-happen it. This is why retrying a failed consumer is
    safe in a way retrying a failed RPC often isn't: the fact is still true, and processing it again
-   should converge to the same result (see idempotency, §09).
+   should converge to the same result (see idempotency, §10).
 3. Coupling doesn't disappear, it moves: from "who do I call" (a function reference, a service URL)
    to "what shape do I emit, what shape do I expect to read." A schema change is now the thing that
    breaks consumers, not a moved endpoint.
@@ -33,7 +33,7 @@ Most of what follows is one of these three facts wearing a costume: a Kafka part
 a specific answer to "how many consumers, in what order"; an AI agent reacting to another agent's
 completion is fact 2, with the agent as both producer and consumer.
 
-One section is deliberately not. §05 is about Server-Sent Events, and SSE breaks fact 1: the server
+One section is deliberately not. §06 is about Server-Sent Events, and SSE breaks fact 1: the server
 holds one specific client's connection and writes straight down it, knowing exactly who is on the
 other end. That is the opposite of a producer not knowing its consumers — which is precisely why it
 is worth a section. Every event-driven system eventually has an edge where events stop being
@@ -68,7 +68,7 @@ drafts, each fixing the last one's problem, arrive at the shape every real broke
 Each draft fixes the previous one's gap: 1 reacts at all but can't survive a crash; 2 survives a
 crash but can't reach a consumer that wasn't listening; 3 resumes after a restart but can't tell
 "processed" from "crashed mid-process"; 4 redelivers what wasn't acknowledged but can't guarantee a
-redelivery isn't processed twice (§09: idempotency).
+redelivery isn't processed twice (§10: idempotency).
 
 ## 03. Delivery guarantees, for real
 
@@ -94,7 +94,7 @@ None of these are run locally on this page — there's no browser-executable "re
 against, the way libuv could be diffed for the event loop page. These rows are quoted from the
 vendors' own documentation, not independently reproduced.
 
-## 04. Ordering and partitioning
+## 04. Ordering, partitioning and parallelism
 
 "The event happened first" and "a consumer sees it first" are different claims. Nothing connects them
 unless a specific mechanism does.
@@ -105,11 +105,73 @@ for that key are ordered relative to each other, but two different keys give no 
 SQS FIFO does the equivalent with a Message Group ID instead of a partition key: order is preserved
 only within one group.
 
-The page's sandbox emits events for two keys (sku-1, sku-2) into two partitions and shows the
-combined "topic order" a consumer sees: each key's own events stay ordered relative to each other,
-but the two sequences interleave arbitrarily.
+Ordering is what partitions constrain; it is not what they are for. A partition is the unit of
+parallelism. Kafka's introduction: a topic is "spread over a number of 'buckets' located on
+different Kafka brokers," and that placement "is very important for scalability because it allows
+client applications to both read and write the data from/to many brokers at the same time." Within
+a consumer group each partition goes to at most one consumer, so the partition count is the ceiling
+on consumer parallelism. Therefore ordering and throughput are bought with the same currency:
+picking a partition key is picking how small a scope you are willing to keep ordered (per customer,
+per SKU) so everything outside that scope runs in parallel. "Order events globally" is not a
+requirement anyone can fill; "order events per customer" is a key.
 
-## 05. What SSE actually is, and what it isn't
+Two patterns hide behind the word "consumer". Competing consumers: exactly one member of a group
+gets the event (SQS deletes it after a successful receive; a Kafka group hands each partition to one
+member) — this shares work, and adding a worker changes nothing semantically. Fan-out: every
+subscriber gets its own copy and its own position (SNS subscribers, or separate Kafka consumer
+groups on one topic) — this adds behaviour, and the producer still doesn't know (fact 1). One Kafka
+topic does both: consumers within a group compete, groups between themselves fan out. Two teams
+reading one topic without noticing they share a group will each process half the events, and it
+looks exactly like random data loss.
+
+The page's sandbox emits events for two keys (sku-1, sku-2) into two partitions, each consumed by
+its own worker, and shows the combined "topic order" a consumer sees: each key's own events stay
+ordered relative to each other, but the two sequences interleave arbitrarily — and in single-key
+mode the second worker has nothing to do, which is the throughput half of the trade made visible.
+
+Source: Apache Kafka — Introduction (https://kafka.apache.org/intro).
+
+## 05. What goes in an event, and what breaks when it changes
+
+Fact 3 said coupling moves into the shape of the event. That is two decisions per event type: what
+goes inside it, and what happens the day it changes.
+
+Three shapes, in Martin Fowler's terminology
+(https://martinfowler.com/articles/201701-event-driven.html):
+
+- Event notification — the event carries {"orderId":"o-1042"} and nothing else. Every consumer must
+  call back for details, which re-introduces exactly the runtime coupling fact 1 removed, and the
+  callback reads current state, which may already have moved past the event being reacted to.
+- Event-carried state transfer — the event carries the fields consumers need. No callback; an
+  offline consumer can catch up without talking to the producer. In exchange every field is a
+  published promise. This is the default worth reaching for.
+- Event sourcing — every change kept forever, state is the fold over the log (§09). The log is the
+  database, with everything that implies.
+
+Schema evolution, with Confluent Schema Registry's vocabulary
+(https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html):
+BACKWARD compatibility (the default) "means that consumers using the new schema can read data
+produced with the last schema"; FORWARD means "data produced with a new schema can be read by
+consumers using the last schema." Adding or removing an optional field is allowed under both; that
+is the entire safe set. For JSON Schema, compatibility "depends on both the compatibility policy and
+the content model (additionalProperties: true for open, false for closed)" — so whether adding a
+field is safe is a fact about your consumers, not about your event.
+
+Practical rules: add, don't change; never rename in place (a rename is a delete plus an add, and it
+breaks every reader of the old name at once); never retype in place (this one fails silently); a
+genuinely breaking change becomes a new event type published alongside the old until the old goes
+quiet, with the version in the type name (order.placed.v2), because fact 1 means you cannot
+enumerate who to warn.
+
+The page's sandbox publishes {"type":"order.placed","orderId":"o-1042","total":4999} to three
+consumers — a tolerant reader, a strict validator with additionalProperties:false, and a billing
+consumer that sums totals — and applies one change at a time. Adding a field: tolerant ok, validator
+rejects, billing ok. Renaming total: all three break. Retyping total to the string "49.99": the
+validator rejects, and the other two keep running and produce "049.99" by string concatenation — the
+silent failure. Publishing a v2 alongside v1: nobody breaks. The full 5 × 3 matrix is asserted by
+test-model.ts.
+
+## 06. What SSE actually is, and what it isn't
 
 Server-Sent Events is not event-driven architecture. It is a transport — one connection, one
 identified reader, no broker, no fan-out, no durability. Its place in this page is the seam: it is
@@ -158,7 +220,7 @@ client re-renders from scratch and de-duplicates by id, so exact resumption does
 server's job. The client side is equally small: `const es = new EventSource("/events");` plus an
 onmessage handler.
 
-## 06. AI model streaming as an SSE application
+## 07. AI model streaming as an SSE application
 
 "The model streams its response" is section 5, with a schema. Set stream: true on an Anthropic
 Messages API call and the response is exactly a text/event-stream, readable by the same
@@ -174,13 +236,13 @@ A tool call is a content block whose content_block_start has "type": "tool_use" 
 growing set of arguments: each content_block_delta for that block carries an input_json_delta with a
 partial_json string fragment, not a complete value. The fragments must be concatenated and are only
 guaranteed parseable once content_block_stop closes the block — the exact same "buffer until the
-boundary" rule as an SSE data: field in §05, one level up the stack.
+boundary" rule as an SSE data: field in §06, one level up the stack.
 
 The page's stepper walks a real tool-use turn quoted verbatim from Anthropic's own streaming
 documentation, showing the tool input accumulating as an incomplete JSON string
 ({"location": → "San → Francisc → o, → CA"}) until the block closes and it parses.
 
-## 07. Agents as event-driven systems
+## 08. Agents as event-driven systems
 
 An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events: its own tool
 result, another agent's completion, a human answering a question it posed. Wire several agents
@@ -197,12 +259,35 @@ is the agent-world analogue of the event loop's phases:
 5. Emit heartbeat.idle if nothing was claimable, or mark the project done.
 6. Emit heartbeat.finished; persist a snapshot of the round.
 
-The page's sandbox runs the exact findReadyTasks/runRound functions that test-model.ts verifies
-against an independently written oracle, over a five-task graph: fetch-price and fetch-inventory have
-no dependencies; price-check depends on both and also waits on its child sanity-check; notify depends
-on price-check.
+Where the graph comes from: nobody draws it. It is built at runtime by agents calling a tool, and
+that tool call is the one from §07 — the arguments that arrived as partial_json fragments and only
+became parseable when the content block closed. The tool is delegate_task
+(https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/tools/task/delegate.ts),
+whose dependsOnTaskIds parameter is described as "Task ids that must finish before this task can
+run", and whose handler contains the single line that creates the edge:
 
-## 08. Event sourcing and agent state
+    status: dependsOnTaskIds.length > 0 ? 'waiting' : 'todo',
+
+So the chain runs end to end: a model emits input_json_delta fragments over SSE (§07); they
+concatenate into the arguments to delegate_task; the handler writes a task whose dependsOn is the
+edge; the scheduler walks the graph the model just drew. The ready set is not a diagram — it is
+whatever the agents have talked themselves into so far.
+
+The same file is the clearest example of fact 2 on the page. delegate_task and complete_task are
+commands: imperative, addressed to a handler, allowed to fail, awaited by the caller. What the
+scheduler emits afterwards — task.completed, task.blocked — are events: past tense, addressed to
+nobody, not refusable. Mixing the two up produces topics full of names like send.email, which read
+as instructions and make the producer responsible for whoever was meant to obey them.
+
+The page's sandbox runs the exact findReadyTasks/runRound functions that test-model.ts verifies
+against an independently written oracle (ported from
+https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/scheduler/graph.ts and
+loop.ts), over a five-task graph: fetch-price and fetch-inventory have no dependencies; price-check
+depends on both and also waits on its child sanity-check; notify depends on price-check. The
+verification includes the case where sanity-check comes back blocked: a blocked child counts as
+finished for its parent, so price-check and notify still complete.
+
+## 09. Event sourcing and agent state
 
 Nothing so far has stored "the current state" anywhere. It's derived: replay the event log from
 empty, and you have it. That's not an implementation detail — it's a deliberate trade of storage
@@ -220,9 +305,9 @@ in advance.
 It doesn't stay free. A log that only ever grows eventually costs more to replay than a snapshot
 would cost to load — which is exactly why Kafka ships log compaction (keeping only the latest record
 per key) as a first-class feature, not an afterthought. Snapshotting is named here, not built: out of
-scope for this page (§10).
+scope for this page (§13).
 
-## 09. Failure, retries, poison messages
+## 10. Failure, retries, poison messages
 
 Every "at-least-once" system in §03 can redeliver. That's not a bug the consumer waits out — it's a
 contract the consumer must be written for: processing the same event twice has to converge to the
@@ -240,7 +325,47 @@ message to a dead-letter queue after a configured maxReceiveCount; Kafka has no 
 convention is application-level — publish the poison message to a separate <topic>.DLT topic instead
 of committing its offset normally.
 
-## 10. The dual write: outbox and CDC
+The formula has no jitter, and most production backoffs do. Every consumer knocked over by the same
+outage computes the same delay from the same formula and comes back at the same instant, knocking
+the recovering service down again — a thundering herd on a schedule. The fix is to sleep a random
+duration up to the computed ceiling. The page quotes 4th-devs' jitter-free formula and names jitter
+as a production change rather than attributing it.
+
+Idempotency, concretely: processing the same event twice leaves the system in the same state as
+processing it once. Three ways there, in ascending order of bookkeeping:
+
+    // 1. Not idempotent. A redelivery double-counts — silently, permanently, as real money.
+    UPDATE accounts SET balance = balance + $1 WHERE id = $2
+
+    // 2. Naturally idempotent: the event says what the world IS, not how much it moved.
+    UPDATE accounts SET balance = $1 WHERE id = $2
+
+    // 3. Made idempotent with the event's own id, in ONE transaction with the effect.
+    INSERT INTO processed_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING
+    -- if no row was inserted, return; otherwise apply the effect, same transaction
+
+Option 2 is not a consumer fix at all — it is the §05 decision made well. An event carrying a delta
+forces every consumer to be exactly-once or be wrong; an event carrying the resulting state lets a
+consumer be sloppy and still land correct, so one field in the payload can buy idempotency for the
+whole downstream.
+
+Two things about option 3: the transaction is not decoration (put the dedup insert in a different
+transaction from the effect, or in Redis, and you have rebuilt the dual write of §11, with a new
+failure where the marker says "handled" and the work never happened); and processed_events grows
+forever, so you prune it by age, which makes deduplication exactly as good as that retention window.
+SQS FIFO has the same limit and says so: "within a 5-minute deduplication window, only one instance
+of a message with the same deduplication ID is processed and delivered"
+(https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/using-messagededuplicationid-property.html).
+
+The page's sandbox delivers evt-1 (+500) and evt-2 (+300) under the three designs and lets you
+redeliver evt-1. Under "balance += amount" the redelivery reaches 1000. Under the absolute write it
+stays 500. Under dedup it is ignored. The last run matters most: deliver evt-1, deliver evt-2, then
+redeliver evt-1 under the absolute write, and the balance walks backwards to 500 — the write was
+idempotent and still wrong, because idempotent is not order-proof. That needs a version guard
+(UPDATE ... WHERE version < :v), which is §04 arriving in the consumer. All of it is asserted by
+test-model.ts.
+
+## 11. The dual write: outbox and CDC
 
 Every example on this page has quietly cheated. Each one writes something down and publishes an event
 about it, and assumes both happen. They cannot — not atomically. A database transaction does not
@@ -254,7 +379,7 @@ into an `outbox` table describing the event. One transaction, one system, atomic
 reads unpublished outbox rows, pushes them to the broker and marks them sent. The crash does not
 disappear, it becomes survivable: die before the relay runs and the row is still there on restart;
 die after publishing but before marking it sent and the relay publishes twice — at-least-once again
-(§03), which is why the consumer must be idempotent (§09). The outbox does not buy exactly-once; it
+(§03), which is why the consumer must be idempotent (§10). The outbox does not buy exactly-once; it
 buys "never silently lost".
 
 CDC answers the same question from the other side: instead of writing an event by hand, read the
@@ -267,30 +392,77 @@ stops being an internal detail and becomes the public contract.
 The page's sandbox lets you tick "crash", place an order and compare the modes: direct dual write
 loses the event permanently, outbox mode leaves a pending row the relay still publishes.
 
-## 11. The whole page in rules, and scope
+## 12. What you give up
+
+Everything before this is mechanism, and mechanism reads like advocacy. The bill, paid on day one
+whether or not the decoupling ever pays you back:
+
+- The call stack is gone. "Why did this happen" used to be answerable by reading downwards. The
+  causal chain is now spread across processes and time, and nothing reconstructs it unless you built
+  that: a correlation id threaded through every event and log line, or a tracing system. Teams
+  discover this during an incident, which is the worst moment to start adding correlation ids.
+- "Find all callers" stops working. There are no callees behind emit('order.placed'); the new call
+  graph is grepping for a string literal, and it misses dynamic subscriptions and names built by
+  concatenation. Fact 1 is a runtime property you wanted and a static-analysis property you gave up.
+- Eventual consistency becomes somebody's UX problem. The user clicks save and the list is
+  maintained by a consumer that hasn't run yet. Spinner, optimistic update, or stale data — there is
+  no fourth option, and the choice belongs to whoever designs the screen.
+- Testing moves to the seams. Every service's unit tests can pass while the system is broken,
+  because the failure is a field one team renamed (§05) and another read. Contract tests catch it,
+  and they are written after the first incident rather than before.
+- You operate a broker: upgrades, disk pressure, partition sizing (§04), consumer-lag alerting, and
+  somebody whose actual job is to read the dead-letter queue. An unread DLQ is a data-loss bug that
+  files itself neatly and waits.
+
+When not to: one service, one database, one consumer you own and deploy together — write the
+function call. The bet pays only when you hold what it buys: consumers you don't control, can't
+enumerate, or that must survive your downtime, or one fact with several genuinely independent
+reactions. If you can name your consumer, you don't have that yet. Events are a wager that not
+knowing your consumers gains you more than not knowing your consumers costs you; frequently a good
+wager, never a free one.
+
+The page's sandbox shows ten log lines from four services for two interleaved orders, and asks which
+order got the "payment problem" email and why. Without a correlation id the question is unanswerable
+from true, complete logs; with one it takes a click. Same incident, same services, same logs — the
+difference is one field somebody either threaded through beforehand or didn't.
+
+## 13. The whole page in rules, and scope
 
 1. A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
    doesn't un-happen it.
 2. "At-least-once" is the practical default everywhere (Kafka, SQS standard, EventBridge);
    exactly-once is achieved on top of it via idempotency or dedup, not by avoiding redelivery.
 3. Ordering is scoped: to a Kafka partition, to an SQS Message Group ID — never to a whole topic or
-   queue.
-4. SSE is one HTTP response the server keeps writing to, in the wire format data:/event:/id:/retry:,
+   queue. A partition is also the unit of parallelism, so ordering and throughput are bought with
+   the same currency: picking a key is picking how small a scope you keep ordered.
+4. Consumers within one group compete for events; separate groups each get their own copy. The same
+   topic does both, and confusing them looks exactly like random data loss.
+5. Prefer an event that says what the world now is over one that says how much it moved: it makes
+   every downstream consumer idempotent for free. Adding an optional field is the only safe change;
+   a rename breaks everyone at once, a type change breaks them silently; a genuinely breaking change
+   is a new event type published beside the old one, because fact 1 means you cannot enumerate who
+   to warn.
+6. SSE is one HTTP response the server keeps writing to, in the wire format data:/event:/id:/retry:,
    one direction only.
-5. AI model streaming is SSE with a documented event schema: message_start → per-block
+7. AI model streaming is SSE with a documented event schema: message_start → per-block
    content_block_start/delta/stop → message_delta → message_stop. Tool-call arguments arrive as JSON
    fragments that are only safe to parse once their block closes.
-6. A multi-agent system is a DAG reacting to done events; the ready set is recomputed every round,
+8. A multi-agent system is a DAG reacting to done events; the ready set is recomputed every round,
    the same shape as an event loop's phases one level up.
-7. Agent state doesn't have to be stored directly — folding an append-only event log recovers it, for
+9. Agent state doesn't have to be stored directly — folding an append-only event log recovers it, for
    free, until the log itself needs compaction.
-8. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
+10. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
    limit belongs in a dead-letter queue, not in an infinite retry loop.
-9. You cannot write to a database and publish an event atomically. Make it one local write — an
+11. You cannot write to a database and publish an event atomically. Make it one local write — an
    outbox row in the same transaction, or the replication log itself (CDC) — and let a relay publish,
-   or accept that a crash in the gap loses the event silently.
+   or accept that a crash in the gap loses the event silently. The same rule governs a deduplication
+   table: mark the event handled in the same transaction as the effect, or you have built the dual
+   write again.
+12. The bill arrives on day one: no stack trace, no "find all callers", eventual consistency visible
+   on someone's screen, and a broker to operate. If you can name your one consumer, write the
+   function call instead.
 
-Left out, on purpose. The outbox and change-data-capture have a section of their own (§10). Two more
+Left out, on purpose. The outbox and change-data-capture have a section of their own (§11). Two more
 a production system hits early, named rather than half-explained:
 
 - Sagas. Once a workflow spans services there is no transaction to roll back. A saga replaces
@@ -299,24 +471,30 @@ a production system hits early, named rather than half-explained:
   inconsistent while it runs.
 - End-to-end exactly-once. §03's exactly-once claims stop at each broker's own boundary. Chaining two
   systems together does not compose their guarantees; the joint is where duplicates reappear, and
-  idempotency (§09) is the only thing that actually travels.
+  idempotency (§10) is the only thing that actually travels.
 
 ## About this page's models
 
-Three claims on this page are backed by running code, checked by test-model.ts:
+Five of this page's models are backed by running code, checked by test-model.ts (21 checks):
 
 - The SSE parser is checked against a real node:http server, including an event deliberately split
   across two TCP-level writes, over a real fetch + ReadableStream client.
-- The DAG scheduler (ready-set computation, parent-unblocking) is checked against an
-  independently-written oracle port of the real algorithm in 4th-devs
-  (05_01_agent_graph/src/scheduler/graph.ts and loop.ts) — two separate implementations of the same
-  real logic, not one copy-pasted into the other.
+- The DAG scheduler (ready-set computation, parent-unblocking, and the case where a child comes back
+  blocked and still has to unblock its parent) is checked against an independently-written oracle
+  port of the real algorithm in 4th-devs (05_01_agent_graph/src/scheduler/graph.ts and loop.ts) —
+  two separate implementations of the same real logic, not one copy-pasted into the other.
 - The backoff formula is checked against the literal formula in 4th-devs
   (05_01_agent_graph/src/scheduler/recovery.ts, computeRetryDelayMs).
+- The §05 schema-evolution matrix is asserted verdict by verdict across five changes and three
+  consumers, so the claim that a retype fails silently for two of them is executed, not described.
+- The §10 idempotency models are checked: delta reaches 1000 after a redelivery, the absolute write
+  stays 500, dedup ignores the duplicate, and the out-of-order absolute write is idempotent and
+  still wrong.
 
 Everything about Kafka, SQS, SNS, EventBridge and NATS delivery/ordering guarantees is not modeled —
-those systems aren't run locally; those claims are cited and quoted from official documentation. The
-§06 streaming fixture is quoted verbatim from Anthropic's own published documentation, not captured
+those systems aren't run locally; those claims are cited and quoted from official documentation, as
+are Confluent's schema-compatibility definitions and Fowler's event-shape taxonomy. The
+§07 streaming fixture is quoted verbatim from Anthropic's own published documentation, not captured
 from a live API call.
 
 Run the harness: node test-model.ts

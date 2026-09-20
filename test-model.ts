@@ -209,9 +209,149 @@ async function checkScheduler(): Promise<void> {
     !pageTrace.some((e) => e.startsWith('start:price-check')) || pageTrace.indexOf('completed:sanity-check') < pageTrace.indexOf('start:price-check'),
     `trace: ${JSON.stringify(pageTrace)}`,
   );
+
+  // The blocked path: a child that comes back 'blocked' is finished as far as its
+  // parent is concerned, so the parent must still become ready. Both
+  // implementations claim this; until now neither was ever asked to prove it.
+  const blocksSanityCheck = (t: OracleTask) =>
+    (t.id === 'sanity-check' ? 'blocked' : 'completed') as 'completed' | 'blocked';
+
+  const blockedPageTasks = buildFixtureGraph();
+  const blockedPageTrace: string[] = [];
+  for (let round = 0; round < 5; round++) {
+    const events = runRound(blockedPageTasks, blocksSanityCheck);
+    if (events.length === 0) break;
+    blockedPageTrace.push(...events.map((e) => `${e.type === 'task.completed' ? 'completed' : e.type === 'task.started' ? 'start' : 'blocked'}:${e.id}`));
+  }
+
+  const blockedOracleTasks = new Map(buildFixtureGraph().map((t) => [t.id, t]));
+  const blockedOracleTrace: string[] = [];
+  for (let round = 0; round < 5; round++) {
+    const trace = oracleRunRound(blockedOracleTasks, (t) =>
+      (t.id === 'sanity-check' ? 'blocked' : 'done') as 'done' | 'blocked');
+    if (trace.length === 0) break;
+    blockedOracleTrace.push(...trace.map((e) => e.replace('done:', 'completed:')));
+  }
+
+  check(
+    'scheduler: a blocked child still unblocks its parent, and both ports agree it does',
+    JSON.stringify(blockedPageTrace) === JSON.stringify(blockedOracleTrace),
+    `page:   ${JSON.stringify(blockedPageTrace)}\n    oracle: ${JSON.stringify(blockedOracleTrace)}`,
+  );
+  check(
+    'scheduler: sanity-check blocks, yet price-check and notify still complete',
+    blockedPageTrace.includes('blocked:sanity-check')
+      && blockedPageTrace.includes('completed:price-check')
+      && blockedPageTrace.includes('completed:notify'),
+    `trace: ${JSON.stringify(blockedPageTrace)}`,
+  );
 }
 
 await checkScheduler();
+
+// ── event shape / schema evolution ───────────────────────────────────────
+{
+  interface Verdict { verdict: string; cls: string; why: string }
+  const { shapeDeliver, SHAPE_CONSUMERS } = loadModel<{
+    shapeDeliver: (k: string) => { published: Array<Record<string, unknown>>; verdicts: Verdict[] };
+    SHAPE_CONSUMERS: Array<{ name: string }>;
+  }>('shape', ['shapeDeliver', 'SHAPE_CONSUMERS']);
+
+  // tolerant reader, strict validator, billing total — in that order.
+  const expected: Record<string, string[]> = {
+    none: ['ok', 'ok', 'ok'],
+    add: ['ok', 'rejects', 'ok'],
+    rename: ['breaks', 'rejects', 'breaks'],
+    retype: ['silently wrong', 'rejects', 'silently wrong'],
+    v2: ['ok', 'ok', 'ok'],
+  };
+
+  check(
+    'shape: the consumer order the page renders matches the order this table asserts',
+    JSON.stringify(SHAPE_CONSUMERS.map((c) => c.name))
+      === JSON.stringify(['tolerant reader', 'strict validator', 'billing total']),
+    JSON.stringify(SHAPE_CONSUMERS.map((c) => c.name)),
+  );
+
+  for (const [change, want] of Object.entries(expected)) {
+    const got = shapeDeliver(change).verdicts.map((v) => v.verdict);
+    check(
+      `shape: "${change}" produces ${want.join(' / ')}`,
+      JSON.stringify(got) === JSON.stringify(want),
+      `expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`,
+    );
+  }
+
+  // The whole point of the v2 row: the old event is still published, untouched.
+  const v2 = shapeDeliver('v2');
+  const v1Again = v2.published.find((e) => e.type === 'order.placed');
+  check(
+    'shape: publishing v2 leaves the v1 event byte-identical, which is why nobody breaks',
+    v2.published.length === 2
+      && JSON.stringify(v1Again) === JSON.stringify({ type: 'order.placed', orderId: 'o-1042', total: 4999 }),
+    JSON.stringify(v2.published),
+  );
+
+  // The silent failure is the reason rule 3 exists: assert it really is silent.
+  const retype = shapeDeliver('retype').verdicts;
+  check(
+    'shape: a retype is caught only by the validator; the other two run on and are wrong',
+    retype[1].verdict === 'rejects'
+      && retype[0].verdict === 'silently wrong'
+      && retype[2].why.includes('049.99'),
+    JSON.stringify(retype.map((v) => v.why)),
+  );
+}
+
+// ── idempotency ──────────────────────────────────────────────────────────
+{
+  interface Inbox { balance: number; processed: string[]; lastSeq: number }
+  const { createInbox, applyDelivery, IDEMPOTENCY_EVENTS } = loadModel<{
+    createInbox: () => Inbox;
+    applyDelivery: (mode: string, s: Inbox, e: Record<string, number | string>) => string;
+    IDEMPOTENCY_EVENTS: Record<string, Record<string, number | string>>;
+  }>('idempotency', ['createInbox', 'applyDelivery', 'IDEMPOTENCY_EVENTS']);
+
+  const run = (mode: string, sequence: Array<'1' | '2'>) => {
+    const state = createInbox();
+    const outcomes = sequence.map((n) => applyDelivery(mode, state, IDEMPOTENCY_EVENTS[n]));
+    return { state, outcomes };
+  };
+
+  check(
+    'idempotency: balance += amount double-counts a redelivery (1000, not 500)',
+    run('delta', ['1', '1']).state.balance === 1000,
+    `got ${run('delta', ['1', '1']).state.balance}`,
+  );
+  check(
+    'idempotency: an absolute write survives a redelivery unchanged (500)',
+    run('absolute', ['1', '1']).state.balance === 500,
+    `got ${run('absolute', ['1', '1']).state.balance}`,
+  );
+  {
+    const { state, outcomes } = run('dedup', ['1', '1']);
+    check(
+      'idempotency: a dedup table drops the redelivery before it touches the balance',
+      state.balance === 500 && outcomes[1] === 'ignored' && state.processed.length === 1,
+      `balance ${state.balance}, outcomes ${JSON.stringify(outcomes)}, processed ${JSON.stringify(state.processed)}`,
+    );
+  }
+  {
+    // Idempotent is not order-proof: an older absolute write lands after a newer one.
+    const { state, outcomes } = run('absolute', ['1', '2', '1']);
+    check(
+      'idempotency: an out-of-order absolute redelivery walks the balance backwards (500, flagged stale)',
+      state.balance === 500 && outcomes[2] === 'stale write',
+      `balance ${state.balance}, outcomes ${JSON.stringify(outcomes)}`,
+    );
+    const dedup = run('dedup', ['1', '2', '1']);
+    check(
+      'idempotency: the dedup consumer survives the same out-of-order redelivery (800)',
+      dedup.state.balance === 800,
+      `got ${dedup.state.balance}`,
+    );
+  }
+}
 
 console.log(failures ? `\n${failures} failing` : '\nall model checks pass');
 process.exit(failures ? 1 : 0);

@@ -131,7 +131,9 @@ pre{background:var(--riser);border:1px solid var(--etch);
 .rows li.inv{border-left:2px solid var(--stored);color:#CBDCE8}
 .rows li.fx{border-left:2px solid var(--live);color:#F0E2CE}
 .rows li.pend{border-left:2px solid var(--warn)}
+.rows li.bad{border-left:2px solid var(--fail);color:#E8CCC4}
 .rows li .who{color:var(--ink-dim);font-size:10.5px;flex:none}
+.rows li .why{display:block;color:var(--idle-ink);font-size:10.5px;margin-top:3px}
 .empty{font-size:11.5px;color:var(--idle-ink);opacity:.6;
   font-family:"IBM Plex Mono",monospace;padding:4px 2px}
 
@@ -294,14 +296,16 @@ ol.out li.new{color:var(--live)}
     <li><a href="#truths">01 — Three things always true</a></li>
     <li><a href="#build-it">02 — If you had to build it</a></li>
     <li><a href="#guarantees">03 — Delivery guarantees, for real</a></li>
-    <li><a href="#ordering">04 — Ordering and partitioning</a></li>
-    <li><a href="#sse">05 — What SSE actually is, and what it isn't</a></li>
-    <li><a href="#ai-streaming">06 — AI model streaming as an SSE application</a></li>
-    <li><a href="#agents">07 — Agents as event-driven systems</a></li>
-    <li><a href="#event-sourcing">08 — Event sourcing and agent state</a></li>
-    <li><a href="#failure">09 — Failure, retries, poison messages</a></li>
-    <li><a href="#dual-write">10 — The dual write: outbox and CDC</a></li>
-    <li><a href="#rules">11 — The whole page in rules, and scope</a></li>
+    <li><a href="#ordering">04 — Ordering, partitioning and parallelism</a></li>
+    <li><a href="#shape">05 — What goes in an event, and what breaks when it changes</a></li>
+    <li><a href="#sse">06 — What SSE actually is, and what it isn't</a></li>
+    <li><a href="#ai-streaming">07 — AI model streaming as an SSE application</a></li>
+    <li><a href="#agents">08 — Agents as event-driven systems</a></li>
+    <li><a href="#event-sourcing">09 — Event sourcing and agent state</a></li>
+    <li><a href="#failure">10 — Failure, retries, poison messages</a></li>
+    <li><a href="#dual-write">11 — The dual write: outbox and CDC</a></li>
+    <li><a href="#cost">12 — What you give up</a></li>
+    <li><a href="#rules">13 — The whole page in rules, and scope</a></li>
   </ol>
 </header>
 
@@ -320,7 +324,7 @@ ol.out li.new{color:var(--live)}
       <code>change the price</code>. A consumer that fails to process it does not un-happen it.
       <p>This is why retrying a failed consumer is safe in a way retrying a failed RPC often isn't:
       the fact is still true, and processing it again should converge to the same result (see
-      idempotency in §09).</p></li>
+      idempotency in §10).</p></li>
     <li>Coupling doesn't disappear, it moves: from "who do I call" (a function reference, a service
       URL) to "what shape do I emit, what shape do I expect to read." A schema change is now the
       thing that breaks consumers, not a moved endpoint.</li>
@@ -329,47 +333,52 @@ ol.out li.new{color:var(--live)}
   with a specific answer to "how many consumers, in what order"; an AI agent reacting to another
   agent's completion is fact 2, with the agent as both producer and consumer.</p>
   <div class="mapwrap">
-    <svg class="map" viewBox="0 0 700 250" role="img" aria-label="Dependency map: every later section hangs off one of the three facts">
+    <svg class="map" viewBox="0 0 700 254" role="img" aria-label="Dependency map: every later section hangs off one of the three facts, and the bottom row closes the page">
       <g class="ab root"><a href="#truths"><rect x="15" y="10" width="150" height="30" rx="3"/><text x="90" y="30" text-anchor="middle">01 · nobody knows who</text></a></g>
       <g class="ab root"><a href="#truths"><rect x="205" y="10" width="150" height="30" rx="3"/><text x="280" y="30" text-anchor="middle">02 · already happened</text></a></g>
       <g class="ab root"><a href="#truths"><rect x="395" y="10" width="150" height="30" rx="3"/><text x="470" y="30" text-anchor="middle">03 · schema coupling</text></a></g>
 
       <path class="e" d="M90,40 L75,104"/>
-      <path class="e" d="M90,40 L200,104"/>
-      <path class="e" d="M90,40 L70,169"/>
-      <path class="e" d="M280,40 L340,104"/>
-      <path class="e" d="M280,40 L215,169"/>
+      <path class="e" d="M90,40 L210,104"/>
+      <path class="e" d="M90,40 L345,104"/>
+      <path class="e" d="M470,40 L480,104"/>
+      <path class="e" d="M470,40 L615,104"/>
+      <path class="e" d="M280,40 L75,169"/>
+      <path class="e" d="M280,40 L210,169"/>
       <path class="e" d="M280,40 L345,169"/>
-      <path class="e" d="M280,40 L600,169"/>
-      <path class="e" d="M470,40 L478,104"/>
-      <path class="e" d="M470,40 L490,169"/>
+      <path class="e" d="M280,40 L480,169"/>
+      <path class="e" d="M470,40 L615,169"/>
 
       <g class="ab"><a href="#build-it"><rect x="15" y="110" width="120" height="26" rx="3"/><text x="75" y="127" text-anchor="middle">§02 build it</text></a></g>
       <g class="ab"><a href="#guarantees"><rect x="150" y="110" width="120" height="26" rx="3"/><text x="210" y="127" text-anchor="middle">§03 guarantees</text></a></g>
-      <g class="ab"><a href="#agents"><rect x="285" y="110" width="120" height="26" rx="3"/><text x="345" y="127" text-anchor="middle">§07 agents</text></a></g>
-      <g class="ab"><a href="#sse"><rect x="420" y="110" width="120" height="26" rx="3"/><text x="480" y="127" text-anchor="middle">§05 the wire</text></a></g>
+      <g class="ab"><a href="#ordering"><rect x="285" y="110" width="120" height="26" rx="3"/><text x="345" y="127" text-anchor="middle">§04 ordering</text></a></g>
+      <g class="ab"><a href="#shape"><rect x="420" y="110" width="120" height="26" rx="3"/><text x="480" y="127" text-anchor="middle">§05 event shape</text></a></g>
+      <g class="ab"><a href="#sse"><rect x="555" y="110" width="120" height="26" rx="3"/><text x="615" y="127" text-anchor="middle">§06 the wire</text></a></g>
 
-      <g class="ab"><a href="#ordering"><rect x="15" y="175" width="120" height="26" rx="3"/><text x="75" y="192" text-anchor="middle">§04 ordering</text></a></g>
-      <g class="ab"><a href="#failure"><rect x="150" y="175" width="120" height="26" rx="3"/><text x="210" y="192" text-anchor="middle">§09 retries</text></a></g>
-      <g class="ab"><a href="#event-sourcing"><rect x="285" y="175" width="120" height="26" rx="3"/><text x="345" y="192" text-anchor="middle">§08 event log</text></a></g>
-      <g class="ab"><a href="#ai-streaming"><rect x="420" y="175" width="120" height="26" rx="3"/><text x="480" y="192" text-anchor="middle">§06 AI streams</text></a></g>
+      <g class="ab"><a href="#agents"><rect x="15" y="175" width="120" height="26" rx="3"/><text x="75" y="192" text-anchor="middle">§08 agents</text></a></g>
+      <g class="ab"><a href="#event-sourcing"><rect x="150" y="175" width="120" height="26" rx="3"/><text x="210" y="192" text-anchor="middle">§09 event log</text></a></g>
+      <g class="ab"><a href="#failure"><rect x="285" y="175" width="120" height="26" rx="3"/><text x="345" y="192" text-anchor="middle">§10 retries</text></a></g>
+      <g class="ab"><a href="#dual-write"><rect x="420" y="175" width="120" height="26" rx="3"/><text x="480" y="192" text-anchor="middle">§11 dual write</text></a></g>
+      <g class="ab"><a href="#ai-streaming"><rect x="555" y="175" width="120" height="26" rx="3"/><text x="615" y="192" text-anchor="middle">§07 AI streams</text></a></g>
 
-      <g class="ab"><a href="#dual-write"><rect x="555" y="175" width="120" height="26" rx="3"/><text x="615" y="192" text-anchor="middle">§10 dual write</text></a></g>
-      <g class="goal"><a href="#rules"><rect x="275" y="220" width="150" height="26" rx="3"/><text x="350" y="237" text-anchor="middle">§11 the whole thing</text></a></g>
+      <g class="goal"><a href="#cost"><rect x="180" y="220" width="160" height="26" rx="3"/><text x="260" y="237" text-anchor="middle">§12 what it costs</text></a></g>
+      <g class="goal"><a href="#rules"><rect x="360" y="220" width="160" height="26" rx="3"/><text x="440" y="237" text-anchor="middle">§13 the whole thing</text></a></g>
     </svg>
   </div>
   <div class="mapkey">
     <span><i class="root"></i> the three facts</span>
     <span><i class="on"></i> a section derived from one</span>
+    <span>the bottom row is where it all lands</span>
     <span>click any box to jump to it</span>
   </div>
 
-  <p>One section is deliberately not. §05 is about Server-Sent Events, and SSE <em>breaks</em> fact 1:
-  the server holds one specific client's connection and writes straight down it, knowing exactly who
-  is on the other end. That's the opposite of a producer not knowing its consumers — which is
-  precisely why it's worth a section. Every event-driven system eventually has an edge where events
-  stop being broadcast to whoever cares and start being written to one identified reader. SSE is what
-  that edge looks like.</p>
+  <p>One box on that map needs a warning label. §06 is about Server-Sent Events, and SSE
+  <em>breaks</em> fact 1: the server holds one specific client's connection and writes straight down
+  it, knowing exactly who is on the other end. It hangs off fact 3 rather than fact 1, because what
+  it has to teach is about the shape of what crosses the boundary, not about who is listening. Every
+  event-driven system eventually has an edge where events stop being broadcast to whoever cares and
+  start being written to one identified reader. SSE is what that edge looks like, which is precisely
+  why it earns a section.</p>
 </section>
 <section id="build-it">
   <div class="sec-head"><span class="sec-num">02</span><h2>If you had to build it</h2></div>
@@ -407,7 +416,7 @@ ol.out li.new{color:var(--live)}
       <tr><td>1</td><td class="prose">Reacting to something, at all</td><td class="prose">Survive a crash</td></tr>
       <tr><td>2</td><td class="prose">Surviving a crash (the fact is on disk)</td><td class="prose">Deliver to a consumer that wasn't listening yet</td></tr>
       <tr><td>3</td><td class="prose">Resuming after a restart</td><td class="prose">Tell the difference between "processed" and "crashed mid-process"</td></tr>
-      <tr><td>4</td><td class="prose">Redelivering what wasn't acknowledged</td><td class="prose">Guarantee a redelivery isn't processed twice (§09: idempotency)</td></tr>
+      <tr><td>4</td><td class="prose">Redelivering what wasn't acknowledged</td><td class="prose">Guarantee a redelivery isn't processed twice (§10: idempotency)</td></tr>
     </tbody>
   </table></div>
 </section>
@@ -452,7 +461,7 @@ ol.out li.new{color:var(--live)}
   quoted from the vendors' own documentation, not independently reproduced.</p>
 </section>
 <section id="ordering">
-  <div class="sec-head"><span class="sec-num">04</span><h2>Ordering and partitioning</h2></div>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Ordering, partitioning and parallelism</h2></div>
   <p class="lead">"The event happened first" and "a consumer sees it first" are different claims.
   Nothing connects them unless a specific mechanism does.</p>
   <p>Kafka orders messages only <em>within</em> a partition. A topic's messages across partitions have
@@ -460,9 +469,51 @@ ol.out li.new{color:var(--live)}
   partition, so events for that key are ordered relative to each other, but two different keys give
   no guarantee either way. SQS FIFO does the equivalent with a Message Group ID instead of a
   partition key: order is preserved only within one group.</p>
+
+  <h3>Why partitions exist at all</h3>
+  <p>Ordering is what partitions <em>constrain</em>; it isn't what they're for. A partition is the
+  unit of parallelism. Kafka's own introduction puts the reason plainly: a topic is "spread over a
+  number of 'buckets' located on different Kafka brokers," and that placement "is very important for
+  scalability because it allows client applications to both read and write the data from/to many
+  brokers at the same time." Within a consumer group, each partition is handed to at most one
+  consumer, so the partition count is the ceiling on how many consumers can work that topic at
+  once. Four partitions, four workers; a fifth worker sits idle.</p>
+  <p>Which makes the trade explicit, and it is the trade of this whole section: <strong>ordering and
+  throughput are bought with the same currency.</strong> One partition gives you a total order over
+  the topic and exactly one worker. A thousand partitions give you a thousand workers and no order
+  worth the name. Picking a partition key is picking how small a scope you're willing to keep
+  ordered — per customer, per SKU, per account — so that everything outside that scope is free to run
+  in parallel. "Order events globally" isn't a requirement anyone can fill; "order events per
+  customer" is a key.</p>
+  <p class="src">Source: <a href="https://kafka.apache.org/intro">Apache Kafka — Introduction</a>
+  (partitioning, per-partition order, same key → same partition).</p>
+
+  <h3>One consumer, or all of them?</h3>
+  <p>A second distinction hides behind the word "consumer" and catches people out constantly,
+  because both things get called a queue in conversation:</p>
+  <div class="tablewrap"><table class="spec">
+    <thead><tr><th>Pattern</th><th class="prose">Who gets the event</th><th class="prose">What it's for</th></tr></thead>
+    <tbody>
+      <tr><td>Competing consumers</td>
+        <td class="prose">Exactly one member of the group — SQS deletes it after a successful
+          receive; a Kafka consumer group hands each partition to one member.</td>
+        <td class="prose">Sharing work. Adding a worker adds throughput and changes nothing
+          semantically.</td></tr>
+      <tr><td>Fan-out</td>
+        <td class="prose">Every subscriber, each with its own independent copy and its own position
+          — SNS subscribers, or separate Kafka consumer <em>groups</em> on one topic.</td>
+        <td class="prose">Independent reactions to the same fact. Adding a subscriber adds
+          behaviour, and the producer still doesn't know (fact 1).</td></tr>
+    </tbody>
+  </table></div>
+  <p>The same Kafka topic does both at once, which is why the vocabulary gets muddled: consumers
+  <em>within</em> one group compete, groups <em>between</em> themselves fan out. Two teams reading
+  the same topic without noticing they're in the same group will silently process half the events
+  each, and it looks exactly like random data loss.</p>
+
   <div class="demo">
     <h4>Sandbox — partition key vs. ordering</h4>
-    <p class="ctlnote">Emit a few events in each mode, then compare the wide bottom panel against the two above it. With one key everything lands in one partition and arrival order is the order. With mixed keys each SKU stays ordered <em>relative to itself</em>, but the combined view interleaves the two sequences arbitrarily — and that combined order is the only one a consumer of the whole topic sees.</p>
+    <p class="ctlnote">Emit a few events in each mode, then compare the wide bottom panel against the two above it. With one key everything lands in one partition and arrival order is the order — but look at worker B: it has nothing to do, because you bought that order with half your throughput. With mixed keys both workers run, each SKU stays ordered <em>relative to itself</em>, and the combined view interleaves the two sequences arbitrarily — that combined order is the only one a consumer of the whole topic sees.</p>
     <div class="ctl">
       <label><input type="radio" name="pk-mode" value="same" checked> same key for every event</label>
       <label><input type="radio" name="pk-mode" value="mixed"> mixed keys (sku-1 / sku-2)</label>
@@ -473,15 +524,104 @@ ol.out li.new{color:var(--live)}
       <button type="button" class="ghost" data-reset>reset</button>
     </div>
     <div class="qgrid">
-      <div class="pane"><h4>partition 0</h4><ul class="rows" data-partition="0"><li class="empty">(empty)</li></ul></div>
-      <div class="pane"><h4>partition 1</h4><ul class="rows" data-partition="1"><li class="empty">(empty)</li></ul></div>
+      <div class="pane"><h4>partition 0 → worker A</h4><ul class="rows" data-partition="0"><li class="empty">(empty)</li></ul></div>
+      <div class="pane"><h4>partition 1 → worker B</h4><ul class="rows" data-partition="1"><li class="empty">(empty)</li></ul></div>
       <div class="pane wide"><h4>consumer sees (topic order)</h4><ul class="rows" data-combined><li class="empty">(empty)</li></ul></div>
     </div>
 
   </div>
 </section>
+<section id="shape">
+  <div class="sec-head"><span class="sec-num">05</span><h2>What goes in an event, and what breaks when it changes</h2></div>
+  <p class="lead">Fact 3 said coupling doesn't disappear, it moves into the shape of the event. That
+  isn't a warning to file away — it's two decisions you make for every event type you ever define:
+  what you put inside it, and what you do on the day you have to change it.</p>
+
+  <h3>Three shapes, and what each one costs</h3>
+  <p>Martin Fowler's names for these are the ones most teams end up saying out loud, so they're
+  worth learning as names rather than as descriptions:</p>
+  <div class="tablewrap"><table class="spec">
+    <thead><tr><th>Shape</th><th class="prose">The event carries</th><th class="prose">What it costs</th></tr></thead>
+    <tbody>
+      <tr><td>Event notification</td>
+        <td class="prose"><code>{"orderId":"o-1042"}</code> — the fact happened, here's the id.</td>
+        <td class="prose">Every consumer has to call back to you for the details, so you've
+          re-introduced exactly the runtime coupling fact 1 removed — and worse, the callback reads
+          <em>current</em> state, which may already have moved past the event being reacted to.</td></tr>
+      <tr><td>Event-carried state transfer</td>
+        <td class="prose">The fields consumers actually need: <code>{orderId, total, currency,
+          customerId}</code>.</td>
+        <td class="prose">No callback, and a consumer that was offline can catch up later without
+          talking to you at all. In exchange every field is now a published promise — this is the
+          row where the rest of this section applies.</td></tr>
+      <tr><td>Event sourcing</td>
+        <td class="prose">Every change, kept forever; state is the fold over the log (§09).</td>
+        <td class="prose">The log <em>is</em> the database, with everything that implies —
+          compaction, replay cost, and no way to quietly fix a bad row.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="src">Source: <a href="https://martinfowler.com/articles/201701-event-driven.html">Martin
+  Fowler — "What do you mean by Event-Driven?"</a>, which names these patterns (plus CQRS) and is
+  where the terminology comes from.</p>
+  <p>The middle row is the one to reach for by default. The first is tempting precisely because the
+  event is tiny and there is nothing in it to break — which is true, and the price is a synchronous
+  call back into your service from every consumer on every event. That is most of what you were
+  buying by going event-driven in the first place, handed back.</p>
+
+  <h3>Then it changes, and you can't phone the people it breaks</h3>
+  <p>Here fact 1 turns around and bites. You cannot coordinate a migration with consumers you cannot
+  enumerate — the property that made publishing cheap is the property that makes changing expensive.
+  Confluent's Schema Registry supplies the vocabulary teams end up using for this:
+  <strong>BACKWARD</strong> compatibility "means that consumers using the new schema can read data
+  produced with the last schema"; <strong>FORWARD</strong> means "data produced with a new schema can
+  be read by consumers using the last schema." BACKWARD is its default. Adding or removing an
+  <em>optional</em> field is allowed in both directions; that is the entire safe set.</p>
+  <p>One detail from those docs matters more than it looks, and the sandbox below is built on it: for
+  JSON Schema, what counts as compatible "depends on both the compatibility policy and the content
+  model (<code>additionalProperties: true</code> for open, <code>false</code> for closed)." Whether
+  adding a field is safe is not a fact about your event. It's a fact about your consumers.</p>
+  <p class="src">Source: <a href="https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html">Confluent
+  Platform — Schema Evolution and Compatibility</a>.</p>
+  <ol class="plain">
+    <li><strong>Add, don't change.</strong> A new field is optional, and "absent" has to be a
+    meaning you're willing to handle forever.</li>
+    <li><strong>Never rename in place.</strong> A rename is a delete plus an add wearing one commit
+    message, and it breaks every reader of the old name simultaneously.</li>
+    <li><strong>Never retype in place.</strong> This is the one that fails <em>quietly</em> — see
+    the third row of the sandbox.</li>
+    <li><strong>A genuinely breaking change gets a new event type</strong>, published alongside the
+    old one until the old one goes quiet. Put the version in the type name
+    (<code>order.placed.v2</code>), not in a field, so a consumer subscribes to what it can
+    actually parse.</li>
+  </ol>
+
+  <div class="demo">
+    <h4>Sandbox — change the event, see who breaks</h4>
+    <p class="ctlnote">One producer, three consumers it has never heard of. Pick a change and predict
+    the three verdicts before you read them — the interesting column is the third, where two
+    consumers keep running and quietly produce a wrong number.</p>
+    <div class="ctl">
+      <label><input type="radio" name="sc-change" value="none" checked> v1, unchanged</label>
+      <label><input type="radio" name="sc-change" value="add"> add <code>currency</code></label>
+      <label><input type="radio" name="sc-change" value="rename"> rename <code>total</code></label>
+      <label><input type="radio" name="sc-change" value="retype"> make <code>total</code> a string</label>
+      <label><input type="radio" name="sc-change" value="v2"> publish a v2 alongside v1</label>
+    </div>
+    <div class="simgrid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)">
+      <div class="pane">
+        <h4>what the producer now emits</h4>
+        <pre data-sc-payload style="margin:0"></pre>
+      </div>
+      <div class="pane">
+        <h4>three consumers you don't control</h4>
+        <ul class="rows" data-sc-consumers></ul>
+      </div>
+    </div>
+    <p class="hint" data-sc-verdict></p>
+  </div>
+</section>
 <section id="sse">
-  <div class="sec-head"><span class="sec-num">05</span><h2>What SSE actually is, and what it isn't</h2></div>
+  <div class="sec-head"><span class="sec-num">06</span><h2>What SSE actually is, and what it isn't</h2></div>
   <p class="lead">Server-Sent Events is not event-driven architecture. It's a transport — one
   connection, one identified reader, no broker, no fan-out, no durability. Putting it in this page
   needs a reason, and the reason is the seam: it's where an event-driven system stops talking to
@@ -496,7 +636,7 @@ ol.out li.new{color:var(--live)}
   <p>That is §02's Draft 1 and Draft 2 in about forty lines. <code>emit</code> doesn't know or care
   who is listening — fact 1, exactly. The bounded <code>buffer</code> plus <code>replay()</code> is a
   miniature durable log: a listener that attaches late can still be handed everything that already
-  happened. It is the agent system of §07 talking to itself, and it never leaves the process.</p>
+  happened. It is the agent system of §08 talking to itself, and it never leaves the process.</p>
 
   <h3>Then, the wire</h3>
   <p>Now the events have to reach a dashboard in a browser, which is a different problem: one
@@ -569,7 +709,7 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="ai-streaming">
-  <div class="sec-head"><span class="sec-num">06</span><h2>AI model streaming as an SSE application</h2></div>
+  <div class="sec-head"><span class="sec-num">07</span><h2>AI model streaming as an SSE application</h2></div>
   <p class="lead">"The model streams its response" is section 5, with a schema. Set
   <code>stream: true</code> on an Anthropic Messages API call and the response is exactly a
   <code>text/event-stream</code>, readable by the same <code>EventSource</code>-shaped logic — only
@@ -587,7 +727,7 @@ data: a plain message with no id or type — dispatched as "message"
   <code>input_json_delta</code> with a <code>partial_json</code> string fragment, not a complete
   value. The fragments must be concatenated and are only guaranteed parseable once
   <code>content_block_stop</code> closes the block — the exact same "buffer until the boundary" rule
-  as an SSE <code>data:</code> field in §05, one level up the stack.</p>
+  as an SSE <code>data:</code> field in §06, one level up the stack.</p>
 
   <div class="demo">
     <h4>Sandbox — stepping through a real captured tool-call turn</h4>
@@ -614,7 +754,7 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="agents">
-  <div class="sec-head"><span class="sec-num">07</span><h2>Agents as event-driven systems</h2></div>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Agents as event-driven systems</h2></div>
   <p class="lead">An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events:
   its own tool result, another agent's completion, a human answering a question it posed. Wire
   several agents together and the whole system is a graph of tasks reacting to each other's
@@ -633,6 +773,33 @@ data: a plain message with no id or type — dispatched as "message"
   </ol>
   <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/03_02_events/docs/heartbeat.md">4th-devs, 03_02_events/docs/heartbeat.md</a>.</p>
 
+  <h3>Where the graph comes from</h3>
+  <p>A DAG diagram invites the assumption that some human drew it. In this system nobody did. The
+  graph is built at runtime by agents calling a tool — and that tool call is the one from §07, the
+  arguments that arrived as <code>partial_json</code> fragments and only became parseable when the
+  content block closed. Here is the tool, with two of its parameters elided:</p>
+  <pre class="lit"><span class="ln">export const definition: FunctionToolDefinition = {</span><span class="ln">  name: 'delegate_task',</span><span class="ln">  description: 'Create a child task assigned to an existing actor. Use returned task ids when creating dependency chains.',</span><span class="ln">  parameters: {</span><span class="ln">    type: 'object',</span><span class="ln">    properties: {</span><span class="ln">      actorName: { type: 'string', description: 'Target actor name, e.g. researcher or writer' },</span><span class="ln">      title: { type: 'string', description: 'Short task title' },</span><span class="ln">      dependsOnTaskIds: {</span><span class="ln">        type: 'array',</span><span class="ln">        description: 'Task ids that must finish before this task can run',</span><span class="ln">        items: { type: 'string' },</span><span class="ln">      },</span><span class="ln">    },</span><span class="ln">  },</span><span class="ln">}</span></pre>
+  <p>And the single line in its handler that decides whether the new task is runnable or has to
+  wait — which is the edge in the graph, created:</p>
+  <pre class="lit"><span class="ln">status: dependsOnTaskIds.length &gt; 0 ? 'waiting' : 'todo',</span></pre>
+  <p class="src">Source: <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/tools/task/delegate.ts">4th-devs, 05_01_agent_graph/src/tools/task/delegate.ts</a>.</p>
+  <p>So the chain runs end to end across three sections of this page: a model emits
+  <code>input_json_delta</code> fragments over SSE (§07); the fragments concatenate into the
+  arguments to <code>delegate_task</code>; the handler writes a task whose <code>dependsOn</code>
+  <em>is</em> the edge; and the scheduler below then walks the graph the model just drew. The
+  "ready set" is not a diagram. It's whatever the agents have talked themselves into so far.</p>
+
+  <h3>One file, both halves of fact 2</h3>
+  <p>Worth pausing on the pair of names, because they are the clearest example on this page of the
+  distinction fact 2 rests on. <code>delegate_task</code> and <code>complete_task</code> are
+  <strong>commands</strong>: imperative, addressed to a specific handler, allowed to fail, and the
+  caller waits for a result. What the scheduler emits afterwards —
+  <code>task.completed</code>, <code>task.blocked</code> — are <strong>events</strong>: past tense,
+  addressed to nobody, and not refusable. An agent asks; the system then states what happened. Mix
+  the two up in your own event names and you get topics full of things like
+  <code>send.email</code>, which read as instructions and quietly make the producer responsible for
+  whoever was supposed to obey them.</p>
+
   <div class="demo">
     <h4>Sandbox — the exact scheduler this page's <code>test-model.ts</code> verifies</h4>
     <p class="ctlnote">Five tasks. An arrow runs from a task to whatever is waiting on it; the dashed one is a parent/child link rather than a dependency. Click "run next round" and watch the labels: only tasks whose dependencies are <em>all</em> done run in a given round, so price-check cannot go in round 1 no matter how many times you click — it is waiting on three things at once.</p>
@@ -647,9 +814,16 @@ data: a plain message with no id or type — dispatched as "message"
     immediately. price-check depends on both <em>and</em> waits on its child sanity-check — watch it
     stay un-ready even after round 1. notify depends on price-check.</p>
   </div>
+  <p class="src">The code behind that sandbox is ported from
+  <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/scheduler/graph.ts">4th-devs,
+  05_01_agent_graph/src/scheduler/graph.ts</a> and
+  <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/scheduler/loop.ts">loop.ts</a>.
+  <code>test-model.ts</code> checks it against a second, independently written port of the same
+  algorithm rather than against a copy of itself — including the case where a task comes back
+  <code>blocked</code> and still has to unblock the parent that was waiting on it.</p>
 </section>
 <section id="event-sourcing">
-  <div class="sec-head"><span class="sec-num">08</span><h2>Event sourcing and agent state</h2></div>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Event sourcing and agent state</h2></div>
   <p class="lead">Nothing so far has stored "the current state" anywhere. It's derived: replay the
   event log from empty, and you have it. That's not an implementation detail — it's a deliberate
   trade of storage simplicity for compute-on-read.</p>
@@ -665,7 +839,7 @@ data: a plain message with no id or type — dispatched as "message"
   <p class="caveat">It doesn't stay free. A log that only ever grows eventually costs more to replay
   than a snapshot would cost to load — which is exactly why Kafka ships log compaction (keeping only
   the latest record per key) as a first-class feature, not an afterthought. Snapshotting is named
-  here, not built: out of scope for this page (§11).</p>
+  here, not built: out of scope for this page (§13).</p>
 
   <div class="demo">
     <h4>Sandbox — state as a fold over the log</h4>
@@ -681,13 +855,21 @@ data: a plain message with no id or type — dispatched as "message"
   </div>
 </section>
 <section id="failure">
-  <div class="sec-head"><span class="sec-num">09</span><h2>Failure, retries, poison messages</h2></div>
+  <div class="sec-head"><span class="sec-num">10</span><h2>Failure, retries, poison messages</h2></div>
   <p class="lead">Every "at-least-once" system in §03 can redeliver. That's not a bug the consumer
   waits out — it's a contract the consumer must be written for: processing the same event twice has
   to converge to the same result (idempotency), or duplicates corrupt state.</p>
   <p>The real backoff formula this page's <code>test-model.ts</code> verified against
-  <code>4th-devs</code>' <code>recovery.ts</code>:</p>
+  <a href="https://github.com/i-am-alice/4th-devs/blob/main/05_01_agent_graph/src/scheduler/recovery.ts"><code>4th-devs</code>'
+  <code>recovery.ts</code></a>:</p>
   <pre class="lit"><span class="ln">const delay = Math.min(15_000, 1_500 * 2 ** (attempt - 1));</span><span class="ln">// attempt 1: 1500ms  2: 3000ms  3: 6000ms  4: 12000ms  5+: 15000ms (capped)</span></pre>
+  <p class="caveat">One thing that formula does not have, and most production backoffs do:
+  <strong>jitter</strong>. Every consumer knocked over by the same outage computes the same delay
+  from the same formula, so they all come back at the same instant and knock the recovering service
+  down again — a thundering herd, self-inflicted, on a schedule. The fix is to randomise: sleep a
+  random duration up to the computed ceiling rather than exactly the ceiling. The formula is quoted
+  here as <code>4th-devs</code> writes it, which is jitter-free; adding it is a production change
+  this page is naming rather than attributing.</p>
   <p>A message that keeps failing past a limit — <code>4th-devs</code> caps auto-retry at 3 attempts —
   is a poison message: something is genuinely wrong with it, not just transiently unlucky, and
   retrying forever would starve everything behind it. Real brokers name this explicitly: SQS's
@@ -711,9 +893,57 @@ data: a plain message with no id or type — dispatched as "message"
     schedule the next retry at the real computed delay — after attempt 3, the message routes to the
     dead-letter pane instead.</p>
   </div>
+
+  <h3>Idempotency, concretely</h3>
+  <p>Idempotency gets asserted on this page four times before here, so it had better be something
+  you can write down. It is: <em>processing the same event twice leaves the system in the same state
+  as processing it once.</em> Three ways to get there, in ascending order of how much bookkeeping
+  they cost you.</p>
+  <pre class="lit"><span class="ln">// 1. Not idempotent. A redelivery double-counts — silently, permanently, as real money.</span><span class="ln">await db.query('UPDATE accounts SET balance = balance + $1 WHERE id = $2', [amount, id]);</span><span class="ln"></span><span class="ln">// 2. Naturally idempotent: the event says what the world IS, not how much it moved.</span><span class="ln">await db.query('UPDATE accounts SET balance = $1 WHERE id = $2', [balanceAfter, id]);</span><span class="ln"></span><span class="ln">// 3. Made idempotent with the event's own id — in ONE transaction with the effect.</span><span class="ln">await db.tx(async (t) =&gt; {</span><span class="ln">  const { rowCount } = await t.query(</span><span class="ln">    'INSERT INTO processed_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING',</span><span class="ln">    [event.id],</span><span class="ln">  );</span><span class="ln">  if (rowCount === 0) return;                  // already handled; do not apply it again</span><span class="ln">  await t.query('UPDATE accounts SET balance = balance + $1 WHERE id = $2', [amount, id]);</span><span class="ln">});</span></pre>
+  <p>Option 2 is the one to design toward, and notice that it isn't a consumer fix at all — it's the
+  §05 decision, made well. An event carrying a <em>delta</em> forces every consumer to be exactly-once
+  or be wrong. An event carrying the resulting state lets a consumer be sloppy and still land
+  correct. You can often buy idempotency for the entire downstream by changing one field in the
+  payload, which is cheaper than buying it consumer by consumer.</p>
+  <p class="caveat">Two things about option 3 that get skipped. First, the transaction is not
+  decoration: put the dedup insert in a different transaction from the effect — or in Redis — and you
+  have rebuilt the dual write of §11, with a new failure where the marker says "handled" and the
+  work never happened. Second, <code>processed_events</code> grows forever, so you prune it by age,
+  which means your deduplication is exactly as good as that retention window and no better. SQS FIFO
+  is honest about having the same limit: "within a 5-minute deduplication window, only one instance
+  of a message with the same deduplication ID is processed and delivered"
+  (<a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/using-messagededuplicationid-property.html">AWS
+  SQS developer guide — message deduplication ID</a>). A duplicate that arrives six minutes late is
+  not a duplicate as far as the broker is concerned.</p>
+
+  <div class="demo">
+    <h4>Sandbox — deliver the same event twice</h4>
+    <p class="ctlnote">Deliver evt-1, then hit "redeliver evt-1" — that is all at-least-once means.
+    Then do it again in each mode. The interesting run is the last one: deliver evt-1, deliver
+    evt-2, <em>then</em> redeliver evt-1, in absolute mode, and watch idempotent turn out not to
+    mean order-proof.</p>
+    <div class="ctl">
+      <label><input type="radio" name="id-mode" value="delta" checked> balance += amount</label>
+      <label><input type="radio" name="id-mode" value="absolute"> balance = balanceAfter</label>
+      <label><input type="radio" name="id-mode" value="dedup"> dedup on event id</label>
+    </div>
+    <div class="controls">
+      <button type="button" data-id-deliver="1">deliver evt-1 (+500)</button>
+      <button type="button" data-id-deliver="2">deliver evt-2 (+300)</button>
+      <button type="button" data-id-redeliver="1">redeliver evt-1</button>
+      <button type="button" class="ghost" data-id-reset>reset</button>
+    </div>
+    <div class="qgrid">
+      <div class="pane"><h4>balance</h4><pre data-id-balance style="margin:0;font-size:20px;color:var(--live)">0</pre></div>
+      <div class="pane"><h4>processed_events</h4><ul class="rows" data-id-processed><li class="empty">(not used in this mode)</li></ul></div>
+      <div class="pane"><h4>deliveries</h4><ul class="rows" data-id-log><li class="empty">(none yet)</li></ul></div>
+    </div>
+    <p class="hint" data-id-verdict>Expected balance after evt-1 and evt-2, however many times they
+    arrive: 800.</p>
+  </div>
 </section>
 <section id="dual-write">
-  <div class="sec-head"><span class="sec-num">10</span><h2>The dual write: outbox and CDC</h2></div>
+  <div class="sec-head"><span class="sec-num">11</span><h2>The dual write: outbox and CDC</h2></div>
   <p class="lead">Every example on this page has quietly cheated. Each one writes something down
   <em>and</em> publishes an event about it, and assumes both happen. They can't — not atomically.
   Your database transaction does not extend to Kafka, and the process can die in the gap.</p>
@@ -730,7 +960,7 @@ data: a plain message with no id or type — dispatched as "message"
   <p>The crash doesn't disappear; it becomes survivable. Die before the relay runs and the outbox row
   is still sitting there on restart. Die after publishing but before marking it sent, and the relay
   publishes it twice — which is at-least-once again (§03), and exactly why the consumer has to be
-  idempotent (§09). The outbox doesn't buy exactly-once; it buys "never silently lost".</p>
+  idempotent (§10). The outbox doesn't buy exactly-once; it buys "never silently lost".</p>
 
   <h3>CDC: don't write the event at all</h3>
   <p>Change-data-capture answers the same question from the other side. Instead of writing an event
@@ -764,15 +994,103 @@ data: a plain message with no id or type — dispatched as "message"
     <p class="hint" data-dw-verdict>Nothing placed yet.</p>
   </div>
 </section>
+<section id="cost">
+  <div class="sec-head"><span class="sec-num">12</span><h2>What you give up</h2></div>
+  <p class="lead">Everything up to here has been mechanism, and eleven sections of mechanism read
+  like advocacy whether or not they meant to. So, the other side: this is the bill, and you pay it
+  on day one, whether or not the decoupling ever pays you back.</p>
+
+  <h3>The call stack is gone</h3>
+  <p>"Why did this happen?" used to be answerable by reading a stack trace downwards. Now the causal
+  chain is spread across processes and across time, and nothing reconstructs it unless you built
+  that yourself: a correlation id threaded through every event and every log line, or a tracing
+  system that does it for you. The demo below is the whole argument. Most teams discover the point
+  it makes during an incident, which is the worst available moment to start adding correlation
+  ids.</p>
+
+  <h3>"Find all callers" stops working</h3>
+  <p>The editor command that answers "what depends on this" is a feature of function calls. There
+  are no callees to find behind <code>emit('order.placed')</code>; the new call graph is grepping
+  for a string literal, and it misses anything that subscribes dynamically or builds a topic name by
+  concatenation. Fact 1 is a runtime property you wanted. It is also a static-analysis property you
+  have given up, and you gave it up for the whole codebase at once.</p>
+
+  <h3>Eventual consistency becomes somebody's UX problem</h3>
+  <p>The user clicks save, the write lands, the event publishes — and the list they are looking at is
+  maintained by a consumer that hasn't run yet. That gap is now a product decision rather than an
+  infrastructure detail: show a spinner, optimistically show the change in the client and reconcile
+  later, or show stale data and accept the support tickets. There isn't a fourth option, and the
+  choice belongs to whoever designs the screen as much as to you.</p>
+
+  <h3>Testing moves to the seams</h3>
+  <p>Every service's unit tests can pass while the system is broken, because the failure is a field
+  one team renamed (§05) and another team read. Nothing inside either service is wrong. The tests
+  that catch this are contract tests across the event schema, and they are the tests teams write
+  after the first incident rather than before it.</p>
+
+  <h3>You now operate a broker</h3>
+  <p>A broker is a distributed system with its own upgrade path, its own disk pressure and its own
+  pager rotation. Managed services relocate that work rather than remove it: partitions still need
+  sizing (§04), consumer lag still needs alerting, and a dead-letter queue still needs somebody
+  whose actual job is to look inside it. An unread DLQ is a data-loss bug that files itself neatly
+  and waits.</p>
+
+  <div class="tablewrap"><table class="spec">
+    <thead><tr><th>With a function call</th><th class="prose">With an event</th></tr></thead>
+    <tbody>
+      <tr><td>A stack trace</td><td class="prose">A correlation id — if you added one beforehand.</td></tr>
+      <tr><td>"Find all callers"</td><td class="prose">Grep for a string, and hope nobody built the name dynamically.</td></tr>
+      <tr><td>The caller sees the failure</td><td class="prose">Nobody sees it. The dead-letter queue does.</td></tr>
+      <tr><td>Consistent when the call returns</td><td class="prose">Consistent eventually, and visibly so, on someone's screen.</td></tr>
+      <tr><td>Deploy both sides together</td><td class="prose">Deploy either side, and find out whether the schema held (§05).</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>So when shouldn't you</h3>
+  <p>One service, one database, one consumer you own and deploy together: write the function call.
+  It is better in every dimension that matters, and an event bus there buys you a decoupling you
+  have no use for at the full price listed above. The bet pays when you actually hold what it buys —
+  consumers you don't control, consumers you can't enumerate, consumers that have to survive your
+  downtime, or one fact with several genuinely independent reactions. A useful test: if you can name
+  your consumer, you don't have that yet.</p>
+  <p>Events are a wager that not knowing your consumers will gain you more than not knowing your
+  consumers costs you. It is frequently a good wager. It is never a free one.</p>
+
+  <div class="demo">
+    <h4>Sandbox — the same incident, with and without a correlation id</h4>
+    <p class="ctlnote">Ten log lines from four services, interleaved the way they actually arrive.
+    Answer this before touching the switch: <em>which order got the "payment problem" email, and
+    why?</em> Then turn correlation ids on and answer it again. Same incident, same services, same
+    logs — the only difference is one field somebody either threaded through beforehand or didn't.</p>
+    <div class="ctl">
+      <label><input type="checkbox" data-cost-cid> thread a correlation id through every line</label>
+    </div>
+    <div class="controls">
+      <button type="button" data-cost-filter="o-1042" disabled>follow o-1042</button>
+      <button type="button" data-cost-filter="o-1043" disabled>follow o-1043</button>
+      <button type="button" class="ghost" data-cost-filter="">show everything</button>
+    </div>
+    <ul class="rows" data-cost-log></ul>
+    <p class="hint" data-cost-verdict></p>
+  </div>
+</section>
 <section id="rules">
-  <div class="sec-head"><span class="sec-num">11</span><h2>The whole page in rules, and scope</h2></div>
+  <div class="sec-head"><span class="sec-num">13</span><h2>The whole page in rules, and scope</h2></div>
   <ol class="plain">
     <li>A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
     doesn't un-happen it.</li>
     <li>"At-least-once" is the practical default everywhere (Kafka, SQS standard, EventBridge);
     exactly-once is achieved on top of it via idempotency or dedup, not by avoiding redelivery.</li>
     <li>Ordering is scoped: to a Kafka partition, to an SQS Message Group ID — never to a whole topic
-    or queue.</li>
+    or queue. A partition is also the unit of parallelism, so ordering and throughput are bought with
+    the same currency: picking a key is picking how small a scope you keep ordered.</li>
+    <li>Consumers within one group compete for events; separate groups each get their own copy. The
+    same topic does both, and confusing them looks exactly like random data loss.</li>
+    <li>Prefer an event that says what the world now <em>is</em> over one that says how much it
+    moved: it makes every downstream consumer idempotent for free. Adding an optional field is the
+    only safe change; a rename breaks everyone at once, and a type change breaks them silently. A
+    genuinely breaking change is a new event type published beside the old one, because fact 1 means
+    you cannot enumerate who to warn.</li>
     <li>SSE is one HTTP response the server keeps writing to, in the wire format
     <code>data:</code>/<code>event:</code>/<code>id:</code>/<code>retry:</code>, one direction only.</li>
     <li>AI model streaming is SSE with a documented event schema:
@@ -787,10 +1105,15 @@ data: a plain message with no id or type — dispatched as "message"
     a limit belongs in a dead-letter queue, not in an infinite retry loop.</li>
     <li>You cannot write to a database and publish an event atomically. Make it one local write — an
     outbox row in the same transaction, or the replication log itself (CDC) — and let a relay do the
-    publishing, or accept that a crash in the gap loses the event silently.</li>
+    publishing, or accept that a crash in the gap loses the event silently. The same rule governs a
+    deduplication table: mark the event handled in the same transaction as the effect, or you have
+    built the dual write again.</li>
+    <li>The bill arrives on day one: no stack trace, no "find all callers", eventual consistency
+    visible on someone's screen, and a broker to operate. If you can name your one consumer, write
+    the function call instead.</li>
   </ol>
   <h3>Left out, on purpose</h3>
-  <p>The outbox and change-data-capture got a section of their own (§10). Two more a production system hits early, named here rather than half-explained:</p>
+  <p>The outbox and change-data-capture got a section of their own (§11). Two more a production system hits early, named here rather than half-explained:</p>
   <ul class="plain">
     <li><strong>Sagas.</strong> Once a workflow spans services, there is no transaction to roll back.
     A saga replaces rollback with explicit compensating actions — refund the payment, release the
@@ -798,7 +1121,7 @@ data: a plain message with no id or type — dispatched as "message"
     briefly, visibly inconsistent while it runs.</li>
     <li><strong>End-to-end exactly-once.</strong> §03's exactly-once claims stop at each broker's own
     boundary. Chaining two systems together doesn't compose their guarantees; the joint is where
-    duplicates reappear, and idempotency (§09) is the only thing that actually travels.</li>
+    duplicates reappear, and idempotency (§10) is the only thing that actually travels.</li>
   </ul>
 </section>
 
@@ -867,7 +1190,7 @@ function createSseParser() {
     get lastEventId() {
       return lastEventId;
     },
-    // the partial line held back until more bytes arrive; §05's sandbox displays it
+    // the partial line held back until more bytes arrive; §06's sandbox displays it
     get buffered() {
       return carry;
     },
@@ -1033,6 +1356,115 @@ function runRound(tasks, runTask) {
   return events;
 }
 /* MODEL:scheduler END */
+
+/* MODEL:shape START */
+// The v1 contract all three consumers below were written against.
+const SHAPE_V1 = { type: 'order.placed', orderId: 'o-1042', total: 4999 };
+
+const SHAPE_CHANGES = {
+  none: () => [{ ...SHAPE_V1 }],
+  add: () => [{ ...SHAPE_V1, currency: 'PLN' }],
+  rename: () => [{ type: SHAPE_V1.type, orderId: SHAPE_V1.orderId, totalCents: SHAPE_V1.total }],
+  retype: () => [{ ...SHAPE_V1, total: '49.99' }],
+  // Both are published; every consumer below still subscribes to the v1 type.
+  v2: () => [
+    { ...SHAPE_V1 },
+    { type: 'order.placed.v2', orderId: SHAPE_V1.orderId, totalCents: SHAPE_V1.total, currency: 'PLN' },
+  ],
+};
+
+const SHAPE_CONSUMERS = [
+  {
+    name: 'tolerant reader',
+    note: 'reads orderId and total, ignores any field it does not recognise',
+    run(e) {
+      if (!('total' in e)) {
+        return { verdict: 'breaks', cls: 'bad',
+          why: 'reads e.total, which is now undefined — the field it was written against is gone' };
+      }
+      if (typeof e.total !== 'number') {
+        return { verdict: 'silently wrong', cls: 'pend',
+          why: `took total ${JSON.stringify(e.total)} without complaint; tolerance is about unknown `
+             + 'fields, and buys nothing against a changed type' };
+      }
+      return { verdict: 'ok', cls: 'inv', why: `read total = ${e.total}` };
+    },
+  },
+  {
+    name: 'strict validator',
+    note: 'JSON Schema with additionalProperties: false; total required, integer',
+    run(e) {
+      const known = ['type', 'orderId', 'total'];
+      const extra = Object.keys(e).filter((k) => !known.includes(k));
+      const problems = [];
+      if (extra.length) {
+        problems.push(`unknown field${extra.length > 1 ? 's' : ''} ${extra.join(', ')} — the content `
+          + 'model is closed, so the whole event fails validation');
+      }
+      if (!('total' in e)) problems.push('required field total is missing');
+      else if (typeof e.total !== 'number') problems.push(`total must be an integer, got ${typeof e.total}`);
+      if (problems.length) return { verdict: 'rejects', cls: 'bad', why: problems.join('; ') };
+      return { verdict: 'ok', cls: 'inv', why: 'every field known, every type as declared' };
+    },
+  },
+  {
+    name: 'billing total',
+    note: 'sums the day’s orders with sum += e.total',
+    run(e) {
+      if (!('total' in e)) {
+        return { verdict: 'breaks', cls: 'bad',
+          why: 'sum becomes NaN, and every later order inherits the NaN' };
+      }
+      if (typeof e.total !== 'number') {
+        return { verdict: 'silently wrong', cls: 'pend',
+          why: `sum is now ${JSON.stringify(0 + e.total)} — string concatenation, not addition, `
+             + 'and nothing anywhere threw' };
+      }
+      return { verdict: 'ok', cls: 'inv', why: `sum = ${0 + e.total}` };
+    },
+  },
+];
+
+// Every consumer subscribes to the v1 type; that is what it is handed.
+function shapeDeliver(changeKey) {
+  const published = SHAPE_CHANGES[changeKey]();
+  const received = published.find((e) => e.type === 'order.placed');
+  return { published, verdicts: SHAPE_CONSUMERS.map((c) => c.run(received)) };
+}
+/* MODEL:shape END */
+
+/* MODEL:idempotency START */
+const IDEMPOTENCY_EVENTS = {
+  1: { id: 'evt-1', seq: 1, amount: 500, balanceAfter: 500 },
+  2: { id: 'evt-2', seq: 2, amount: 300, balanceAfter: 800 },
+};
+
+function createInbox() {
+  return { balance: 0, processed: [], lastSeq: 0 };
+}
+
+// One delivery of one event, under one of three consumer designs.
+function applyDelivery(mode, state, event) {
+  if (mode === 'delta') {
+    state.balance += event.amount;
+    return 'applied';
+  }
+  if (mode === 'absolute') {
+    // The event states what the balance now IS. Re-applying it is harmless —
+    // but applying an OLDER one after a newer one walks the balance backwards,
+    // which is why a real absolute write carries a version and guards on it.
+    const stale = event.seq < state.lastSeq;
+    state.balance = event.balanceAfter;
+    state.lastSeq = Math.max(state.lastSeq, event.seq);
+    return stale ? 'stale write' : 'applied';
+  }
+  // 'dedup': the event's own id is the idempotency key.
+  if (state.processed.includes(event.id)) return 'ignored';
+  state.processed.push(event.id);
+  state.balance += event.amount;
+  return 'applied';
+}
+/* MODEL:idempotency END */
 </script>
 <script>
 (() => {
@@ -1068,6 +1500,235 @@ function runRound(tasks, runTask) {
   });
   root.querySelector('[data-reset]').addEventListener('click', () => {
     partitions[0] = []; partitions[1] = []; combined.length = 0; render();
+  });
+  render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('cost');
+  if (!root) return;
+  const logEl = root.querySelector('[data-cost-log]');
+  const verdictEl = root.querySelector('[data-cost-verdict]');
+  const cidBox = root.querySelector('[data-cost-cid]');
+
+  // Two orders' worth of work, interleaved the way four services actually log.
+  const LINES = [
+    { svc: 'api', cid: 'o-1042', msg: 'POST /orders accepted' },
+    { svc: 'api', cid: 'o-1043', msg: 'POST /orders accepted' },
+    { svc: 'orders', cid: 'o-1042', msg: 'published order.placed' },
+    { svc: 'payments', cid: 'o-1042', msg: 'charge authorised' },
+    { svc: 'orders', cid: 'o-1043', msg: 'published order.placed' },
+    { svc: 'inventory', cid: 'o-1042', msg: 'reserved 2 units' },
+    { svc: 'payments', cid: 'o-1043', msg: 'charge declined: insufficient funds' },
+    { svc: 'email', cid: 'o-1042', msg: 'sent order confirmation' },
+    { svc: 'inventory', cid: 'o-1043', msg: 'reservation failed: out of stock' },
+    { svc: 'email', cid: 'o-1043', msg: 'sent "there was a payment problem"' },
+  ];
+
+  let filter = '';
+
+  function render() {
+    const withCid = cidBox.checked;
+    if (!withCid) filter = '';
+    root.querySelectorAll('[data-cost-filter]').forEach((b) => {
+      if (b.dataset.costFilter) b.disabled = !withCid;
+    });
+
+    logEl.innerHTML = '';
+    for (const l of LINES) {
+      const dimmed = filter && l.cid !== filter;
+      const li = document.createElement('li');
+      if (filter && l.cid === filter) li.className = 'fx';
+      if (dimmed) li.style.opacity = '.25';
+      const left = document.createElement('span');
+      left.textContent = withCid ? `[${l.cid}] ${l.msg}` : l.msg;
+      const right = document.createElement('span');
+      right.className = 'who';
+      right.textContent = l.svc;
+      li.append(left, right);
+      logEl.appendChild(li);
+    }
+
+    const shown = LINES.filter((l) => l.cid === filter).length;
+    verdictEl.textContent = withCid
+      ? (filter
+        ? `${shown} lines, in order, cause visible: ${filter} ${filter === 'o-1043'
+          ? 'was declined by payments and was out of stock — the email is explained twice over.'
+          : 'authorised, reserved, confirmed — this is the one that worked.'}`
+        : 'Now every line says which order it belongs to, so the chain is reconstructable by eye — '
+          + 'and by grep, and by a dashboard. Click "follow o-1043" for the failing one. The field '
+          + 'costs nothing; not having it costs an outage.')
+      : 'Ten true lines and no way to connect them. You can see that a charge was declined and that '
+        + 'something was out of stock, but not whether either had anything to do with the email — '
+        + 'and with a hundred orders a minute, not even that. This is what losing the stack trace '
+        + 'actually looks like.';
+  }
+
+  cidBox.addEventListener('change', render);
+  root.querySelectorAll('[data-cost-filter]').forEach((b) => {
+    b.addEventListener('click', () => { filter = b.dataset.costFilter; render(); });
+  });
+  render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('failure');
+  if (!root) return;
+  const balanceEl = root.querySelector('[data-id-balance]');
+  const processedEl = root.querySelector('[data-id-processed]');
+  const logEl = root.querySelector('[data-id-log]');
+  const verdictEl = root.querySelector('[data-id-verdict]');
+  if (!balanceEl) return;
+
+  const CLS = { applied: 'inv', ignored: 'fx', 'stale write': 'bad' };
+  let state = createInbox();
+  let log = [];
+
+  const mode = () => root.querySelector('input[name="id-mode"]:checked').value;
+
+  function fill(el, items, emptyText) {
+    el.innerHTML = '';
+    if (!items.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = emptyText;
+      el.appendChild(li);
+      return;
+    }
+    for (const it of items) {
+      const li = document.createElement('li');
+      if (it.cls) li.className = it.cls;
+      const left = document.createElement('span');
+      left.textContent = it.label;
+      const right = document.createElement('span');
+      right.className = 'who';
+      right.textContent = it.note || '';
+      li.append(left, right);
+      el.appendChild(li);
+    }
+  }
+
+  function verdict() {
+    const m = mode();
+    const dupes = log.filter((l) => l.redelivery).length;
+    if (!log.length) {
+      return 'Expected balance after evt-1 and evt-2, however many times they arrive: 800.';
+    }
+    if (m === 'delta') {
+      return dupes
+        ? `Balance is ${state.balance}. The duplicate was counted as real money, nothing threw, and `
+          + 'no log line anywhere says something went wrong. This is what "the consumer must be '
+          + 'idempotent" is protecting you from.'
+        : `Balance is ${state.balance}, and correct — as long as nothing is ever redelivered, which `
+          + 'is not something at-least-once lets you assume. Try redelivering.';
+    }
+    if (m === 'absolute') {
+      if (log.some((l) => l.outcome === 'stale write')) {
+        return `Balance is ${state.balance}. The redelivery was idempotent — it wrote the same value `
+          + 'it wrote the first time — and still left the balance wrong, because it arrived after a '
+          + 'newer event. Idempotent does not mean order-proof; that needs a version guard '
+          + '(UPDATE ... WHERE version < :v), which is §04 arriving in the consumer.';
+      }
+      return `Balance is ${state.balance}. The redelivery overwrote the same value, so it changed `
+        + 'nothing. At-least-once stopped being a problem — not by catching duplicates, but by '
+        + 'making them not matter.';
+    }
+    return `Balance is ${state.balance}. The duplicate was recognised by its id and dropped before `
+      + 'it touched the balance. Correct, at the price of a table you now have to write, index and '
+      + 'prune.';
+  }
+
+  function render() {
+    balanceEl.textContent = String(state.balance);
+    fill(
+      processedEl,
+      mode() === 'dedup' ? state.processed.map((id) => ({ label: id, cls: 'inv' })) : [],
+      mode() === 'dedup' ? '(nothing processed yet)' : '(not used in this mode)',
+    );
+    fill(logEl, log.map((l) => ({
+      label: `${l.id}${l.redelivery ? ' (again)' : ''}`,
+      note: l.outcome,
+      cls: CLS[l.outcome] || '',
+    })), '(none yet)');
+    verdictEl.textContent = verdict();
+  }
+
+  function deliver(n, redelivery) {
+    const event = IDEMPOTENCY_EVENTS[n];
+    const outcome = applyDelivery(mode(), state, event);
+    log.push({ id: event.id, outcome, redelivery });
+    render();
+  }
+
+  root.querySelectorAll('[data-id-deliver]').forEach((b) => {
+    b.addEventListener('click', () => deliver(b.dataset.idDeliver, false));
+  });
+  root.querySelectorAll('[data-id-redeliver]').forEach((b) => {
+    b.addEventListener('click', () => deliver(b.dataset.idRedeliver, true));
+  });
+  root.querySelectorAll('input[name="id-mode"]').forEach((r) => {
+    r.addEventListener('change', () => { state = createInbox(); log = []; render(); });
+  });
+  root.querySelector('[data-id-reset]').addEventListener('click', () => {
+    state = createInbox(); log = []; render();
+  });
+  render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('shape');
+  if (!root) return;
+  const payloadEl = root.querySelector('[data-sc-payload]');
+  const listEl = root.querySelector('[data-sc-consumers]');
+  const verdictEl = root.querySelector('[data-sc-verdict]');
+
+  const LESSON = {
+    none: 'The baseline: three consumers, three greens. Change one thing at a time from here.',
+    add: '"Additive changes are safe" is a claim about your consumers, not about your event. The '
+       + 'tolerant reader shrugs; the closed-content-model validator rejects a perfectly good order '
+       + 'because it mentions a field its schema has never heard of.',
+    rename: 'A rename is a delete plus an add wearing one commit message. Everyone who read the old '
+          + 'name breaks at the same moment, and "the data is still there" helps none of them.',
+    retype: 'The dangerous one, and the reason rule 3 exists. Only the validator noticed. The other '
+          + 'two kept running and produced a wrong number — a change that fails loudly is cheap, '
+          + 'this one ships.',
+    v2: 'The only move that works when fact 1 means you cannot enumerate who is listening: publish '
+      + 'both, let each consumer migrate on its own clock, retire v1 when the old type goes quiet. '
+      + 'Boring and expensive, which is what correctness costs here.',
+  };
+
+  function render() {
+    const key = root.querySelector('input[name="sc-change"]:checked').value;
+    const { published, verdicts } = shapeDeliver(key);
+    payloadEl.textContent = published
+      .map((e) => JSON.stringify(e, null, 2))
+      .join('\n\n');
+    listEl.innerHTML = '';
+    verdicts.forEach((v, i) => {
+      const c = SHAPE_CONSUMERS[i];
+      const li = document.createElement('li');
+      li.className = v.cls;
+      const left = document.createElement('span');
+      const name = document.createElement('strong');
+      name.textContent = c.name;
+      const why = document.createElement('span');
+      why.className = 'why';
+      why.textContent = `${c.note} — ${v.why}`;
+      left.append(name, why);
+      const badge = document.createElement('span');
+      badge.className = 'who';
+      badge.textContent = v.verdict;
+      li.append(left, badge);
+      listEl.appendChild(li);
+    });
+    verdictEl.textContent = LESSON[key];
+  }
+
+  root.querySelectorAll('input[name="sc-change"]').forEach((r) => {
+    r.addEventListener('change', render);
   });
   render();
 })();

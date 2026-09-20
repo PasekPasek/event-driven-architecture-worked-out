@@ -15,7 +15,16 @@ Key points made on this page:
   producer plus a transactional, read-committed consumer); SQS standard is at-least-once/best-effort
   order, SQS FIFO is exactly-once/ordered within one Message Group ID; SNS/EventBridge fan out with no
   cross-subscriber ordering (SNS FIFO topics excepted).
-- **Ordering** — scoped to a Kafka partition or an SQS Message Group ID, never to a whole topic/queue.
+- **Ordering and parallelism** — order is scoped to a Kafka partition or an SQS Message Group ID,
+  never to a whole topic/queue. A partition is also the unit of consumer parallelism, so ordering and
+  throughput are bought with the same currency: picking a key is picking how small a scope stays
+  ordered. Consumers within one group compete for each event; separate groups each get their own copy.
+- **Event shape and schema evolution** — three shapes in Fowler's terms (event notification,
+  event-carried state transfer, event sourcing). Coupling lands on the payload: adding an optional
+  field is the only broadly safe change, a rename breaks every reader at once, a type change breaks
+  them silently, and a genuinely breaking change means publishing a new event type beside the old one
+  — fact 1 means the producer cannot enumerate who to warn. Whether an addition is safe is a fact
+  about the consumer's content model (`additionalProperties: true` vs `false`), not about the event.
 - **SSE is a transport, not an architecture** — it *breaks* fact 1: the server holds one identified
   client's connection and writes straight down it. The event-driven half is the in-process bus
   (emit/subscribe/bounded replay buffer); SSE is the wire that carries its output across a process
@@ -29,15 +38,30 @@ Key points made on this page:
   once the block closes.
 - **Agents** — a multi-agent system is a DAG of tasks reacting to `done` events; the ready set
   (dependencies all satisfied) is recomputed every round, mirroring an event loop's phases one level up.
+  Nobody draws the DAG: agents build it at runtime by calling `delegate_task`, whose
+  `dependsOnTaskIds` argument becomes the edge — the same tool call that arrived as `partial_json`
+  fragments over SSE. That tool call is a *command* (imperative, refusable, awaited); what the
+  scheduler emits afterwards (`task.completed`) is an *event* (past tense, addressed to nobody).
 - **Event sourcing** — state is recovered by folding an append-only event log, not stored directly;
   crash recovery and an audit trail come for free, until the log needs compaction.
 - **Failure handling** — a redelivered event under at-least-once delivery isn't a bug; the real
-  backoff formula this page verifies is `min(15000, 1500 * 2^(attempt-1))` ms; a message failing past
-  a retry limit belongs in a dead-letter queue.
+  backoff formula this page verifies is `min(15000, 1500 * 2^(attempt-1))` ms (jitter-free as quoted,
+  which invites a thundering herd); a message failing past a retry limit belongs in a dead-letter
+  queue.
+- **Idempotency** — `balance += amount` double-counts a redelivery; `balance = balanceAfter` doesn't,
+  which makes it an event-shape decision rather than a consumer fix; a dedup table works but must be
+  written in the same transaction as the effect, or it is the dual write again, and its retention
+  window is the real limit of deduplication (SQS FIFO: 5 minutes). Idempotent is not order-proof — an
+  absolute write applied out of order is idempotent and still wrong without a version guard.
 - **The dual write** — you cannot write to a database and publish an event atomically. The outbox
   pattern makes it one local transaction plus a relay; change-data-capture derives events from the
   database's own replication log instead, at the cost of your table schema becoming the public
   contract. Sagas and end-to-end exactly-once are named and left out.
+- **What you give up** — no stack trace (a correlation id only if you added one beforehand), no "find
+  all callers", eventual consistency as a visible UX problem, testing that moves to the seams between
+  services, and a broker to operate. With one service, one database and one consumer you deploy
+  together, write the function call: if you can name your consumer, you don't yet have what events
+  buy.
 
 ## Page
 
@@ -46,19 +70,26 @@ Key points made on this page:
 ## Source material
 
 - [Apache Kafka documentation — message delivery semantics](https://kafka.apache.org/documentation/#semantics)
+- [Apache Kafka — Introduction](https://kafka.apache.org/intro): partitioning, per-partition order, and partitioning as the scalability mechanism.
+- [Martin Fowler — "What do you mean by Event-Driven?"](https://martinfowler.com/articles/201701-event-driven.html): event notification, event-carried state transfer, event sourcing, CQRS.
+- [Confluent Platform — Schema Evolution and Compatibility](https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html): BACKWARD/FORWARD definitions and the JSON Schema content-model caveat.
+- [AWS SQS developer guide — message deduplication ID](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/using-messagededuplicationid-property.html): the 5-minute deduplication window.
 - [AWS SQS developer guide — FIFO queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html)
 - [AWS SQS developer guide — dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
 - [AWS SNS developer guide — FIFO topics](https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html)
 - [AWS EventBridge user guide — dead-letter queues for undelivered events](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html)
-- [Anthropic Messages API — streaming](https://platform.claude.com/docs/en/build-with-claude/streaming): the "Streaming request with tool use" response quoted verbatim as this page's §06 fixture.
-- [4th-devs](https://github.com/i-am-alice/4th-devs), `05_01_agent_graph/src/{events.ts,server.ts,scheduler/*}` and `03_02_events/docs/{heartbeat.md,schemas.md}`: the real event bus, SSE server, DAG scheduler, backoff formula and heartbeat loop this page is built from.
+- [Anthropic Messages API — streaming](https://platform.claude.com/docs/en/build-with-claude/streaming): the "Streaming request with tool use" response quoted verbatim as this page's §07 fixture.
+- [4th-devs](https://github.com/i-am-alice/4th-devs), `05_01_agent_graph/src/{events.ts,server.ts,scheduler/*,tools/task/delegate.ts}` and `03_02_events/docs/{heartbeat.md,schemas.md}`: the real event bus, SSE server, DAG scheduler, the `delegate_task` tool that builds the graph, the backoff formula and the heartbeat loop this page is built from.
 - WHATWG HTML — the `text/event-stream` parsing algorithm `EventSource` implements.
 
 ## Caveat
 
-The SSE parser and DAG scheduler shown are checked by `test-model.ts` against a real HTTP server and
-an independently-written oracle port, respectively. Broker delivery/ordering guarantees (Kafka, SQS,
-SNS, EventBridge) are cited from vendor documentation, not independently reproduced locally. The §06
+Five of the page's models are checked by `test-model.ts` (21 checks): the SSE parser against a real
+HTTP server, the DAG scheduler against an independently-written oracle port (including the blocked
+child case), the backoff formula against its source, the §05 schema-evolution matrix verdict by
+verdict, and the §10 idempotency models. Broker delivery/ordering guarantees (Kafka, SQS, SNS,
+EventBridge), Confluent's compatibility definitions and Fowler's taxonomy are cited from primary
+sources, not independently reproduced locally. The §07
 streaming fixture is quoted from Anthropic's own published documentation, not captured from a live
 API call.
 
