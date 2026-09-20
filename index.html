@@ -644,7 +644,38 @@ data: {"type":"task.completed","id":"fetch-price"}
     </div>
   </div>
 </section>
-<section id="failure"><!-- Task 16 --></section>
+<section id="failure">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Failure, retries, poison messages</h2></div>
+  <p class="lead">Every "at-least-once" system in §03 can redeliver. That's not a bug the consumer
+  waits out — it's a contract the consumer must be written for: processing the same event twice has
+  to converge to the same result (idempotency), or duplicates corrupt state.</p>
+  <p>The real backoff formula this page's <code>test-model.ts</code> verified against
+  <code>4th-devs</code>' <code>recovery.ts</code>:</p>
+  <pre class="lit"><span class="ln">const delay = Math.min(15_000, 1_500 * 2 ** (attempt - 1));</span>
+<span class="ln">// attempt 1: 1500ms  2: 3000ms  3: 6000ms  4: 12000ms  5+: 15000ms (capped)</span></pre>
+  <p>A message that keeps failing past a limit — <code>4th-devs</code> caps auto-retry at 3 attempts —
+  is a poison message: something is genuinely wrong with it, not just transiently unlucky, and
+  retrying forever would starve everything behind it. Real brokers name this explicitly: SQS's
+  redrive policy moves a message to a dead-letter queue after a configured
+  <code>maxReceiveCount</code>; Kafka has no built-in DLQ, so the convention is application-level —
+  publish the poison message to a separate <code>&lt;topic&gt;.DLT</code> topic instead of committing
+  its offset normally.</p>
+  <p class="src">Sources: <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html">AWS SQS developer guide — dead-letter queues</a>; Kafka's
+  dead-letter-topic pattern is documented as a convention across Kafka Streams/Connect docs rather
+  than a single core-broker feature.</p>
+
+  <div class="demo">
+    <h4>Sandbox — the verified backoff formula, and where it gives up</h4>
+    <div class="tlwrap"><svg class="tl" viewBox="0 0 560 140" data-retry-tl></svg></div>
+    <div class="controls">
+      <button type="button" data-retry-fail>attempt fails again</button>
+      <button type="button" class="ghost" data-retry-reset>reset</button>
+    </div>
+    <p class="hint" data-retry-hint>Attempt 1 has already happened. Click "attempt fails again" to
+    schedule the next retry at the real computed delay — after attempt 3, the message routes to the
+    dead-letter pane instead.</p>
+  </div>
+</section>
 <section id="rules"><!-- Task 17 --></section>
 
 <footer>
@@ -1010,6 +1041,44 @@ function runRound(tasks, runTask) {
     });
   }
   scrub.addEventListener('input', render);
+  render();
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById('failure');
+  if (!root) return;
+  let attempt = 1;
+  let dead = false;
+
+  function render() {
+    const svg = root.querySelector('[data-retry-tl]');
+    let x = 20;
+    const marks = [];
+    for (let a = 1; a <= attempt; a++) {
+      marks.push(`<circle class="ran" cx="${x}" cy="70" r="5"/><text x="${x}" y="95" text-anchor="middle">#${a}</text>`);
+      if (a < attempt) {
+        const delay = computeRetryDelayMs(a);
+        marks.push(`<text x="${x + 30}" y="60" text-anchor="middle">+${delay}ms</text>`);
+      }
+      x += 90;
+    }
+    if (dead) {
+      marks.push(`<rect x="${x - 10}" y="50" width="90" height="40" fill="none" stroke="var(--fail)" stroke-width="1.5"/>`);
+      marks.push(`<text x="${x + 35}" y="75" text-anchor="middle" fill="var(--fail)">dead-lettered</text>`);
+    }
+    svg.innerHTML = marks.join('');
+    root.querySelector('[data-retry-fail]').disabled = dead;
+  }
+
+  root.querySelector('[data-retry-fail]').addEventListener('click', () => {
+    if (attempt > MAX_AUTO_RETRY_ATTEMPTS) { dead = true; }
+    else { attempt++; }
+    render();
+  });
+  root.querySelector('[data-retry-reset]').addEventListener('click', () => {
+    attempt = 1; dead = false; render();
+  });
   render();
 })();
 </script>
