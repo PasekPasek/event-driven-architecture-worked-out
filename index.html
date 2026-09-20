@@ -377,7 +377,7 @@ ol.out li.new{color:var(--live)}
   deadline, hand it out again. That single rule is a broker's visibility timeout (SQS), its consumer
   group session timeout (Kafka), and its ack-wait (NATS JetStream) — three names for the same fix to
   the same problem Draft 3 exposed.</p>
-  <table class="spec">
+  <div class="tablewrap"><table class="spec">
     <thead><tr><th>Draft</th><th class="prose">What it fixes</th><th class="prose">What it still can't do</th></tr></thead>
     <tbody>
       <tr><td>1</td><td class="prose">Reacting to something, at all</td><td class="prose">Survive a crash</td></tr>
@@ -385,7 +385,7 @@ ol.out li.new{color:var(--live)}
       <tr><td>3</td><td class="prose">Resuming after a restart</td><td class="prose">Tell the difference between "processed" and "crashed mid-process"</td></tr>
       <tr><td>4</td><td class="prose">Redelivering what wasn't acknowledged</td><td class="prose">Guarantee a redelivery isn't processed twice (§09: idempotency)</td></tr>
     </tbody>
-  </table>
+  </table></div>
 </section>
 <section id="guarantees">
   <div class="sec-head"><span class="sec-num">03</span><h2>Delivery guarantees, for real</h2></div>
@@ -400,7 +400,7 @@ ol.out li.new{color:var(--live)}
     underlying delivery is at-least-once underneath (achieved via deduplication or idempotent
     writes, not by magically never redelivering).</li>
   </ul>
-  <table class="spec">
+  <div class="tablewrap"><table class="spec">
     <thead><tr><th>System</th><th class="prose">Default guarantee</th><th class="prose">Ordering</th></tr></thead>
     <tbody>
       <tr><td>Kafka</td><td class="prose">At-least-once. Exactly-once needs an idempotent producer
@@ -418,7 +418,7 @@ ol.out li.new{color:var(--live)}
       <tr><td>EventBridge</td><td class="prose">At-least-once, automatic retry, per-rule DLQ.</td>
         <td class="prose">None.</td></tr>
     </tbody>
-  </table>
+  </table></div>
   <p class="src">Sources: <a href="https://kafka.apache.org/documentation/#semantics">Apache Kafka
   documentation — message delivery semantics</a>; <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html">AWS SQS developer guide — FIFO queues</a>;
   <a href="https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html">AWS SNS developer guide — FIFO
