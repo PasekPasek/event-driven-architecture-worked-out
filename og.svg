@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#1A2028"/>
+  <rect x="0.5" y="0.5" width="1199" height="629" fill="none" stroke="#2C3743" stroke-width="2"/>
+  <g font-family="IBM Plex Mono, DejaVu Sans Mono, monospace" fill="#8C99A6" font-size="20">
+    <text x="80" y="92">event-driven architecture — worked out</text>
+  </g>
+  <g font-family="IBM Plex Serif, DejaVu Serif, Georgia, serif" fill="#DDE3E9" font-weight="600" font-size="56">
+    <text x="80" y="212">How events actually flow,</text>
+    <text x="80" y="282">from a queue to an AI agent</text>
+  </g>
+  <g fill="none" stroke="#3A4552" stroke-width="1.8">
+    <circle cx="180" cy="440" r="46"/>
+    <circle cx="380" cy="440" r="46"/>
+    <circle cx="580" cy="440" r="46"/>
+  </g>
+  <g stroke="#7FA7C4" stroke-width="2">
+    <path d="M226,440 L334,440"/>
+    <path d="M426,440 L534,440"/>
+  </g>
+  <g fill="#C79BDF" font-family="IBM Plex Mono, DejaVu Sans Mono, monospace" font-size="16" text-anchor="middle">
+    <text x="180" y="530">producer</text>
+    <text x="380" y="530">broker</text>
+    <text x="580" y="530">agent</text>
+  </g>
+  <g font-family="IBM Plex Mono, DejaVu Sans Mono, monospace" fill="#8C99A6" font-size="18">
+    <text x="80" y="580">Kafka · SQS · SNS · EventBridge · SSE · streaming · agents</text>
+  </g>
+</svg>
