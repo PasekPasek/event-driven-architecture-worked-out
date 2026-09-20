@@ -1,0 +1,58 @@
+# Event-Driven Architecture, Worked Out
+
+> An interactive, single-page explainer for event-driven architecture: what a broker actually
+> guarantees (Kafka, SQS, SNS, EventBridge), what Server-Sent Events really is, and how AI model
+> streaming and multi-agent orchestration are both applications of the same mechanism. The SSE parser
+> and DAG scheduler shown are verified against real running code by `test-model.ts`; broker guarantees
+> are cited from official docs. Author: Paweł Pasek.
+
+Key points made on this page:
+
+- **Foundations** — a producer doesn't know its consumers; an event is a fact, not a request, so a
+  failed consumer doesn't un-happen it; coupling moves from runtime calls to schema shape.
+- **Delivery guarantees** — Kafka is at-least-once by default (exactly-once needs an idempotent
+  producer plus a transactional, read-committed consumer); SQS standard is at-least-once/best-effort
+  order, SQS FIFO is exactly-once/ordered within one Message Group ID; SNS/EventBridge fan out with no
+  cross-subscriber ordering (SNS FIFO topics excepted).
+- **Ordering** — scoped to a Kafka partition or an SQS Message Group ID, never to a whole topic/queue.
+- **SSE** — one HTTP response kept open, `Content-Type: text/event-stream`, wire fields
+  `data:`/`event:`/`id:`/`retry:`, one direction only; `EventSource` auto-reconnects using
+  `Last-Event-ID`.
+- **AI streaming** — the same SSE mechanism with a documented schema:
+  `message_start` → per-block `content_block_start/delta/stop` → `message_delta` → `message_stop`.
+  Tool-call input arrives as JSON fragments (`input_json_delta`/`partial_json`) safe to parse only
+  once the block closes.
+- **Agents** — a multi-agent system is a DAG of tasks reacting to `done` events; the ready set
+  (dependencies all satisfied) is recomputed every round, mirroring an event loop's phases one level up.
+- **Event sourcing** — state is recovered by folding an append-only event log, not stored directly;
+  crash recovery and an audit trail come for free, until the log needs compaction.
+- **Failure handling** — a redelivered event under at-least-once delivery isn't a bug; the real
+  backoff formula this page verifies is `min(15000, 1500 * 2^(attempt-1))` ms; a message failing past
+  a retry limit belongs in a dead-letter queue.
+
+## Page
+
+- [Event-Driven Architecture, Worked Out](https://pasekpasek.github.io/event-driven-architecture-worked-out/): the full explainer.
+
+## Source material
+
+- [Apache Kafka documentation — message delivery semantics](https://kafka.apache.org/documentation/#semantics)
+- [AWS SQS developer guide — FIFO queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html)
+- [AWS SQS developer guide — dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
+- [AWS SNS developer guide — FIFO topics](https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html)
+- [AWS EventBridge user guide — dead-letter queues for undelivered events](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html)
+- [Anthropic Messages API — streaming](https://platform.claude.com/docs/en/build-with-claude/streaming): the "Streaming request with tool use" response quoted verbatim as this page's §06 fixture.
+- [4th-devs](https://github.com/i-am-alice/4th-devs), `05_01_agent_graph/src/{events.ts,server.ts,scheduler/*}` and `03_02_events/docs/{heartbeat.md,schemas.md}`: the real event bus, SSE server, DAG scheduler, backoff formula and heartbeat loop this page is built from.
+- WHATWG HTML — the `text/event-stream` parsing algorithm `EventSource` implements.
+
+## Caveat
+
+The SSE parser and DAG scheduler shown are checked by `test-model.ts` against a real HTTP server and
+an independently-written oracle port, respectively. Broker delivery/ordering guarantees (Kafka, SQS,
+SNS, EventBridge) are cited from vendor documentation, not independently reproduced locally. The §06
+streaming fixture is quoted from Anthropic's own published documentation, not captured from a live
+API call.
+
+## Optional
+
+- [Source repository](https://github.com/PasekPasek/event-driven-architecture-worked-out): one HTML file, no build step, MIT.

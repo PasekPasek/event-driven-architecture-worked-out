@@ -1,0 +1,260 @@
+# Event-Driven Architecture, Worked Out
+
+Source: https://pasekpasek.github.io/event-driven-architecture-worked-out/
+Author: Paweł Pasek
+Verified against: a real node:http server (SSE parsing), an independent oracle port of 4th-devs'
+scheduler (DAG readiness), the literal recovery.ts formula (backoff). Broker guarantees cited from
+vendor docs.
+
+A producer publishes a fact. Something, eventually, reacts to it. Everything else — brokers,
+Server-Sent Events, streaming model output, multi-agent orchestration — is a variation on that one
+relationship. This is the plain-text version of the page, without the sandboxes.
+
+## 01. Three things always true
+
+Most explanations of event-driven architecture open with a diagram: boxes for services, arrows for
+messages, a cylinder for a queue. The diagram is a consequence. Start one level lower, with what
+makes something "event-driven" rather than just "asynchronous."
+
+1. A producer does not know who, if anyone, consumes an event it publishes. There is no return value
+   and no caller identity — publishing is not the same operation as calling. Contrast a function
+   call, where the caller knows exactly what it invoked and gets a value back. An event has none of
+   that: zero, one, or a hundred consumers may react, and the producer's code is identical in every
+   case.
+2. An event describes a fact that has already happened — price.changed, not "change the price". A
+   consumer that fails to process it does not un-happen it. This is why retrying a failed consumer is
+   safe in a way retrying a failed RPC often isn't: the fact is still true, and processing it again
+   should converge to the same result (see idempotency, §09).
+3. Coupling doesn't disappear, it moves: from "who do I call" (a function reference, a service URL)
+   to "what shape do I emit, what shape do I expect to read." A schema change is now the thing that
+   breaks consumers, not a moved endpoint.
+
+Everything below is one of these three facts wearing a costume: a Kafka partition is fact 1 with a
+specific answer to "how many consumers, in what order"; an SSE connection is fact 1 pointed in one
+direction only; an AI agent reacting to another agent's completion is fact 2 with the agent as both
+producer and consumer.
+
+## 02. If you had to build it
+
+An event needs something to hold it and something to eventually call the right reactions. Four
+drafts, each fixing the last one's problem, arrive at the shape every real broker takes.
+
+- Draft 1 — an in-process EventEmitter: `bus.on("price.changed", ...)` / `bus.emit(...)`.
+  Synchronous, at-most-once, and the event never existed outside process memory: crash between emit
+  and the listener finishing and it's simply gone. Fine within one process; not durable enough for
+  anything that must survive a restart.
+- Draft 2 — append to a durable log before dispatch: `appendFileSync("events.log", ...)` then emit.
+  The fact survives a crash. But dispatch is still a one-shot in-memory broadcast: a consumer that
+  starts five minutes later never sees it. Durability of the fact and delivery to a consumer are two
+  different problems.
+- Draft 3 — a reader tracks its own position: keep an `offset` into the log, slice from it, remember
+  the new offset after processing. A restarted consumer can now resume from its own offset instead of
+  the producer's broadcast moment. But if the process crashes after reading and before persisting the
+  new offset, that event is redelivered. That's not a bug to fix — it's the origin of "at-least-once."
+- Draft 4 — acknowledge or redeliver: give every delivered-but-unacknowledged event a deadline; if it
+  isn't acknowledged in time, hand it out again. That one rule is a broker's visibility timeout (SQS),
+  its consumer-group session timeout (Kafka) and its ack-wait (NATS JetStream) — three names for the
+  same fix to the problem Draft 3 exposed.
+
+Each draft fixes the previous one's gap: 1 reacts at all but can't survive a crash; 2 survives a
+crash but can't reach a consumer that wasn't listening; 3 resumes after a restart but can't tell
+"processed" from "crashed mid-process"; 4 redelivers what wasn't acknowledged but can't guarantee a
+redelivery isn't processed twice (§09: idempotency).
+
+## 03. Delivery guarantees, for real
+
+"At-least-once" and "exactly-once" get repeated as marketing lines. Defined precisely:
+
+- At-most-once — delivered zero or one times; a crash between send and receipt loses it silently.
+- At-least-once — delivered one or more times; a crash between processing and acknowledging causes a
+  redelivery. The consumer must tolerate duplicates.
+- Exactly-once — the observed effect happens once, even if the underlying delivery is at-least-once
+  underneath (achieved via deduplication or idempotent writes, not by magically never redelivering).
+
+What four real systems document:
+
+- Kafka: at-least-once. Exactly-once needs an idempotent producer (enable.idempotence=true) and a
+  transactional consumer (isolation.level=read_committed). Ordering: within one partition only (§04).
+- SQS standard: at-least-once, best-effort — duplicates and reordering both possible. No ordering.
+- SQS FIFO: exactly-once processing via deduplication. Ordering within one Message Group ID only.
+- SNS standard: at-least-once per subscriber. No ordering across the fanout.
+- SNS FIFO: exactly-once, SQS FIFO subscribers only. Ordering within one message group.
+- EventBridge: at-least-once, automatic retry, per-rule DLQ. No ordering.
+
+None of these are run locally on this page — there's no browser-executable "real Kafka" to diff
+against, the way libuv could be diffed for the event loop page. These rows are quoted from the
+vendors' own documentation, not independently reproduced.
+
+## 04. Ordering and partitioning
+
+"The event happened first" and "a consumer sees it first" are different claims. Nothing connects them
+unless a specific mechanism does.
+
+Kafka orders messages only within a partition. A topic's messages across partitions have no defined
+relative order at all. A producer picks the partition via a key — same key, same partition, so events
+for that key are ordered relative to each other, but two different keys give no guarantee either way.
+SQS FIFO does the equivalent with a Message Group ID instead of a partition key: order is preserved
+only within one group.
+
+The page's sandbox emits events for two keys (sku-1, sku-2) into two partitions and shows the
+combined "topic order" a consumer sees: each key's own events stay ordered relative to each other,
+but the two sequences interleave arbitrarily.
+
+## 05. What SSE actually is
+
+Server-Sent Events: one HTTP response that never ends. No upgrade handshake, no new protocol — just
+Content-Type: text/event-stream on an ordinary response the server keeps writing to, and a client
+that knows how to read it as a sequence of events instead of one blob. One direction only: server to
+client. A client that wants to talk back makes a separate, ordinary HTTP request.
+
+The body is lines of `field: value`. A blank line means "dispatch what's buffered so far":
+
+    id: 42
+    event: task.completed
+    data: {"taskId":"write-intro","actor":"writer"}
+
+    data: a plain message with no id or type — dispatched as "message"
+
+- data: — the payload. Multiple data: lines before a blank line are joined with newlines into one event.
+- event: — the event type a client can filter on with addEventListener(type, ...); omitted, it
+  dispatches as the generic "message" event.
+- id: — the reconnect checkpoint. The browser remembers the last one it saw and resends it as a
+  Last-Event-ID request header if the connection drops and it reconnects.
+- retry: — how many milliseconds to wait before that automatic reconnect.
+
+A minimal SSE server is a handful of lines, quoted unmodified from 4th-devs
+(05_01_agent_graph/src/server.ts, sseHandler): write the text/event-stream headers, flush them, write
+every buffered past event as `data: ...\n\n`, then subscribe and write each new event the same way.
+
+Notice it replays every buffered past event on every new connection, unconditionally — it never reads
+a Last-Event-ID header at all. That's a legitimate, simpler design for a small bounded buffer: the
+client re-renders from scratch and de-duplicates by id, so exact resumption doesn't need to be the
+server's job. The client side is equally small: `const es = new EventSource("/events");` plus an
+onmessage handler.
+
+## 06. AI model streaming as an SSE application
+
+"The model streams its response" is section 5, with a schema. Set stream: true on an Anthropic
+Messages API call and the response is exactly a text/event-stream, readable by the same
+EventSource-shaped logic — only now the event types and payloads are documented, not ad hoc.
+
+One turn is a fixed sequence: message_start (the message shell, with an empty content array), then
+per content block content_block_start → repeated content_block_delta → content_block_stop, then
+message_delta (carrying the final stop_reason) and message_stop. A ping event may appear between
+deltas purely as a keep-alive, with no content of its own — the same role as the `: connected` comment
+line a raw SSE server can send.
+
+A tool call is a content block whose content_block_start has "type": "tool_use" and a partial,
+growing set of arguments: each content_block_delta for that block carries an input_json_delta with a
+partial_json string fragment, not a complete value. The fragments must be concatenated and are only
+guaranteed parseable once content_block_stop closes the block — the exact same "buffer until the
+boundary" rule as an SSE data: field in §05, one level up the stack.
+
+The page's stepper walks a real tool-use turn quoted verbatim from Anthropic's own streaming
+documentation, showing the tool input accumulating as an incomplete JSON string
+({"location": → "San → Francisc → o, → CA"}) until the block closes and it parses.
+
+## 07. Agents as event-driven systems
+
+An agent's "loop" — plan, act, observe, replan — is a consumer reacting to events: its own tool
+result, another agent's completion, a human answering a question it posed. Wire several agents
+together and the whole system is a graph of tasks reacting to each other's done events.
+
+4th-devs implements this as a DAG: each task lists what it dependsOn; every round, the scheduler
+recomputes the ready set — tasks whose dependencies are all done — and only those run. Its round loop
+is the agent-world analogue of the event loop's phases:
+
+1. Emit heartbeat.started.
+2. Reconcile dependency blocks/unblocks.
+3. Resolve waiting-on-a-human tasks.
+4. Each agent claims one open task, runs it, the status transition is emitted as an event.
+5. Emit heartbeat.idle if nothing was claimable, or mark the project done.
+6. Emit heartbeat.finished; persist a snapshot of the round.
+
+The page's sandbox runs the exact findReadyTasks/runRound functions that test-model.ts verifies
+against an independently written oracle, over a five-task graph: fetch-price and fetch-inventory have
+no dependencies; price-check depends on both and also waits on its child sanity-check; notify depends
+on price-check.
+
+## 08. Event sourcing and agent state
+
+Nothing so far has stored "the current state" anywhere. It's derived: replay the event log from
+empty, and you have it. That's not an implementation detail — it's a deliberate trade of storage
+simplicity for compute-on-read.
+
+4th-devs writes exactly this: an append-only events.jsonl, one JSON object per line, never edited,
+only appended to (03_02_events/docs/schemas.md).
+
+Two things fall out for free. Crash recovery: restart, replay the log, and the in-memory state is
+exactly what it was — there is no separate "did the state file get corrupted" failure mode, because
+there never was a state file, only the log. Observability: any question about "what happened, and
+when" is answerable by reading the log, not by having remembered to instrument that specific question
+in advance.
+
+It doesn't stay free. A log that only ever grows eventually costs more to replay than a snapshot
+would cost to load — which is exactly why Kafka ships log compaction (keeping only the latest record
+per key) as a first-class feature, not an afterthought. Snapshotting is named here, not built: out of
+scope for this page (§10).
+
+## 09. Failure, retries, poison messages
+
+Every "at-least-once" system in §03 can redeliver. That's not a bug the consumer waits out — it's a
+contract the consumer must be written for: processing the same event twice has to converge to the
+same result (idempotency), or duplicates corrupt state.
+
+The real backoff formula, verified by test-model.ts against 4th-devs' recovery.ts:
+
+    const delay = Math.min(15_000, 1_500 * 2 ** (attempt - 1));
+    // attempt 1: 1500ms  2: 3000ms  3: 6000ms  4: 12000ms  5+: 15000ms (capped)
+
+A message that keeps failing past a limit — 4th-devs caps auto-retry at 3 attempts — is a poison
+message: something is genuinely wrong with it, not just transiently unlucky, and retrying forever
+would starve everything behind it. Real brokers name this explicitly: SQS's redrive policy moves a
+message to a dead-letter queue after a configured maxReceiveCount; Kafka has no built-in DLQ, so the
+convention is application-level — publish the poison message to a separate <topic>.DLT topic instead
+of committing its offset normally.
+
+## 10. The whole page in rules, and scope
+
+1. A producer doesn't know its consumers; an event is a fact, not a request — a failed consumer
+   doesn't un-happen it.
+2. "At-least-once" is the practical default everywhere (Kafka, SQS standard, EventBridge);
+   exactly-once is achieved on top of it via idempotency or dedup, not by avoiding redelivery.
+3. Ordering is scoped: to a Kafka partition, to an SQS Message Group ID — never to a whole topic or
+   queue.
+4. SSE is one HTTP response the server keeps writing to, in the wire format data:/event:/id:/retry:,
+   one direction only.
+5. AI model streaming is SSE with a documented event schema: message_start → per-block
+   content_block_start/delta/stop → message_delta → message_stop. Tool-call arguments arrive as JSON
+   fragments that are only safe to parse once their block closes.
+6. A multi-agent system is a DAG reacting to done events; the ready set is recomputed every round,
+   the same shape as an event loop's phases one level up.
+7. Agent state doesn't have to be stored directly — folding an append-only event log recovers it, for
+   free, until the log itself needs compaction.
+8. A consumer under at-least-once delivery must be idempotent; a message that keeps failing past a
+   limit belongs in a dead-letter queue, not in an infinite retry loop.
+
+Left out, on purpose, not by oversight: sagas and distributed transactions across services; the
+transactional outbox pattern; change-data-capture (CDC); exactly-once delivery guaranteed end-to-end
+across heterogeneous systems (only within a single broker's own transactional features); non-JS/TS
+ecosystems; anything Windows-specific.
+
+## About this page's models
+
+Three claims on this page are backed by running code, checked by test-model.ts:
+
+- The SSE parser is checked against a real node:http server, including an event deliberately split
+  across two TCP-level writes, over a real fetch + ReadableStream client.
+- The DAG scheduler (ready-set computation, parent-unblocking) is checked against an
+  independently-written oracle port of the real algorithm in 4th-devs
+  (05_01_agent_graph/src/scheduler/graph.ts and loop.ts) — two separate implementations of the same
+  real logic, not one copy-pasted into the other.
+- The backoff formula is checked against the literal formula in 4th-devs
+  (05_01_agent_graph/src/scheduler/recovery.ts, computeRetryDelayMs).
+
+Everything about Kafka, SQS, SNS, EventBridge and NATS delivery/ordering guarantees is not modeled —
+those systems aren't run locally; those claims are cited and quoted from official documentation. The
+§06 streaming fixture is quoted verbatim from Anthropic's own published documentation, not captured
+from a live API call.
+
+Run the harness: node test-model.ts
