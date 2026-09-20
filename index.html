@@ -508,7 +508,12 @@ ol.out li.new{color:var(--live)}
   <h3>The wire format</h3>
   <p>The body is lines of <code>field: value</code>. A blank line means "dispatch what's buffered so
   far":</p>
-  <pre class="lit"><span class="ln">id: 42</span><span class="ln">event: task.completed</span><span class="ln">data: {"taskId":"write-intro","actor":"writer"}</span><span class="ln"></span><span class="ln">data: a plain message with no id or type — dispatched as "message"</span><span class="ln"></span></pre>
+  <pre>id: 42
+event: task.completed
+data: {"taskId":"write-intro","actor":"writer"}
+
+data: a plain message with no id or type — dispatched as "message"
+</pre>
   <ul class="plain">
     <li><code>data:</code> — the payload. Multiple <code>data:</code> lines before a blank line are
     joined with newlines into one event.</li>
